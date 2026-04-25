@@ -28,6 +28,8 @@ export default function SettingsPage() {
   const importTaskFile = useStore((s) => s.importTaskFile);
   const clearAllData = useStore((s) => s.clearAllData);
   const tasks = useStore((s) => s.tasks);
+  const addTask = useStore((s) => s.addTask);
+  const deleteTask = useStore((s) => s.deleteTask);
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
 
@@ -141,6 +143,48 @@ export default function SettingsPage() {
     default: { text: 'Not asked yet', color: 'text-amber-400', bg: 'bg-amber-500/10' },
     unsupported: { text: 'Unsupported', color: 'text-[var(--text-muted)]', bg: 'bg-[var(--bg-secondary)]' },
   }[permStatus];
+
+  const TEST_TASK_TAG = '__test__';
+  const SAMPLE_TEST_TASKS = [
+    { title: 'Standup meeting', priority: 'high' as const,    desc: 'Daily team sync — share progress + blockers' },
+    { title: 'Coffee + stretch', priority: 'low' as const,    desc: 'Take a 5 min walk away from the screen' },
+    { title: 'Review pull requests', priority: 'medium' as const, desc: 'Clear the PR queue' },
+    { title: 'Drink water', priority: 'urgent' as const,      desc: 'Hydrate — full glass right now' },
+    { title: 'Plan tomorrow', priority: 'medium' as const,    desc: 'Pick top 3 priorities for the next day' },
+  ];
+
+  const handleScheduleTestTasks = () => {
+    const now = Date.now();
+    SAMPLE_TEST_TASKS.forEach((s, i) => {
+      const start = new Date(now + (i + 1) * 60_000);
+      const end = new Date(start.getTime() + 30_000);
+      addTask({
+        title: `[Test] ${s.title}`,
+        description: s.desc,
+        priority: s.priority,
+        status: 'pending',
+        categoryId: null,
+        tags: [TEST_TASK_TAG],
+        recurrence: 'once',
+        scheduledAt: start.toISOString(),
+        endAt: end.toISOString(),
+        notifyOnEnd: true,
+        completedAt: null,
+        pomodorosEstimated: 1,
+        subtasks: [],
+      });
+    });
+    const firstFires = new Date(now + 60_000).toLocaleTimeString();
+    addToast(`5 test tasks scheduled · first fires at ${firstFires} (varied priorities + end alerts)`, 'success');
+  };
+
+  const handleClearTestTasks = () => {
+    const ids = tasks.filter((t) => t.tags.includes(TEST_TASK_TAG)).map((t) => t.id);
+    ids.forEach((id) => deleteTask(id));
+    addToast(ids.length > 0 ? `Cleared ${ids.length} test tasks` : 'No test tasks found', ids.length > 0 ? 'success' : 'info');
+  };
+
+  const testTaskCount = tasks.filter((t) => t.tags.includes(TEST_TASK_TAG)).length;
 
   const storageUsed = useMemo(() => {
     try {
@@ -294,6 +338,28 @@ export default function SettingsPage() {
             />
           </div>
         </SettingRow>
+
+        <div className="pt-2 border-t border-[var(--border)]">
+          <p className="text-sm font-medium text-[var(--text-primary)]">Reliability Test</p>
+          <p className="text-xs text-[var(--text-muted)] mb-3">
+            Schedule 5 varied tasks (one per minute, mixed priorities, with end alerts) so you can verify notifications fire reliably over time.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleScheduleTestTasks}
+              className="btn-secondary text-xs flex-1 flex items-center justify-center gap-1.5"
+            >
+              <Bell size={14} /> Schedule 5 Test Tasks
+            </button>
+            <button
+              onClick={handleClearTestTasks}
+              disabled={testTaskCount === 0}
+              className="btn-ghost text-xs px-3 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              Clear{testTaskCount > 0 ? ` (${testTaskCount})` : ''}
+            </button>
+          </div>
+        </div>
       </Section>
 
       {/* Defaults */}

@@ -48,11 +48,23 @@ export function useNotifications() {
       });
     };
 
-    // Sync now + on every store change + before close
+    // Sync now + on every store change + before close + periodic + on focus
     sync();
     const unsub = useStore.subscribe(() => sync());
     window.addEventListener('beforeunload', sync);
-    return () => { unsub(); window.removeEventListener('beforeunload', sync); };
+    // Periodic resync — prevents the SW going idle and dropping its setTimeout queue.
+    // Chrome kills idle SWs after ~30s; resyncing every 25s keeps it warm AND re-registers timers.
+    const periodic = setInterval(sync, 25_000);
+    const onFocus = () => sync();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      unsub();
+      clearInterval(periodic);
+      window.removeEventListener('beforeunload', sync);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, []);
 
   // ── Listen for SW messages ──
