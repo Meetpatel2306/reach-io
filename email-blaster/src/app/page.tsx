@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
   FileText, Upload, Mail, Send, Users, Check, X, Trash2,
   Save, ChevronRight, ChevronLeft, Download, Activity,
-  Clock, Paperclip, Eye, Settings, Loader2, History,
+  Clock, Paperclip, Eye, EyeOff, Settings, Loader2, History,
   Zap, HelpCircle, Shield
 } from "lucide-react";
 import Link from "next/link";
@@ -117,6 +117,7 @@ export default function Home() {
   const [showSettings, setShowSettings] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
   const [testingSmtp, setTestingSmtp] = useState(false);
+  const [showPass, setShowPass] = useState(false);
   const [smtpMsg, setSmtpMsg] = useState("");
   const [minDelay, setMinDelay] = useState(2);
   const [maxDelay, setMaxDelay] = useState(5);
@@ -193,7 +194,7 @@ export default function Home() {
       setSmtpUser(saved.smtpUser);
       setSmtpHost(saved.smtpHost || "smtp.gmail.com");
       setSmtpPort(saved.smtpPort || "587");
-      // Don't populate password field — keep it hidden, but mark as configured
+      setSmtpPass(saved.smtpPass || "");
       setSmtpSecurity(saved.smtpSecurity || "starttls");
       setSmtpConfigured(true);
     } else {
@@ -219,10 +220,10 @@ export default function Home() {
   }, []);
 
   const saveSmtpConfig = async () => {
+    if (!smtpUser || !smtpPass) { setSmtpMsg("Email and password are required"); return; }
     setSavingSmtp(true);
     setSmtpMsg("");
     try {
-      // Verify connection on server
       const res = await fetch("/api/smtp-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -231,7 +232,6 @@ export default function Home() {
       const data = await res.json();
       if (data.error) { setSmtpMsg(data.error); }
       else {
-        // Save to localStorage
         saveSmtp({ smtpHost, smtpPort, smtpUser, smtpPass, smtpSecurity });
         setSmtpMsg("Verified & Saved!");
         setSmtpConfigured(true);
@@ -242,6 +242,7 @@ export default function Home() {
   };
 
   const testSmtpConnection = async () => {
+    if (!smtpUser || !smtpPass) { setSmtpMsg("Email and password are required"); return; }
     setTestingSmtp(true);
     setSmtpMsg("");
     try {
@@ -537,7 +538,12 @@ export default function Home() {
             </div>
             <div>
               <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">App Password</label>
-              <input className="input-field" type="password" placeholder={smtpConfigured ? "••••••••" : "Enter app password"} value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} />
+              <div className="relative">
+                <input className="input-field pr-10" type={showPass ? "text" : "password"} placeholder="Enter app password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} />
+                <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-violet-400 transition-colors">
+                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
             <div>
               <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">SMTP Host</label>
