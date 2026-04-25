@@ -3,7 +3,7 @@ import { Trash2, X, GripVertical } from "lucide-react";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useLibrary } from "@/contexts/LibraryContext";
 import { useToast } from "@/contexts/ToastContext";
-import { artistsName, pickImage, uid } from "@/lib/utils";
+import { artistsName, pickImage } from "@/lib/utils";
 import { playlists } from "@/lib/storage";
 import { useState } from "react";
 

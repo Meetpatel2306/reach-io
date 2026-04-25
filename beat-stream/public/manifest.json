@@ -1,13 +1,13 @@
 {
   "name": "BeatStream",
   "short_name": "BeatStream",
-  "description": "Stream and discover music — offline-ready PWA",
+  "description": "Free music streaming — play any song",
   "start_url": "/",
   "scope": "/",
   "id": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "any",
   "categories": ["music", "entertainment"],
   "icons": [
@@ -23,5 +23,9 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "Search", "url": "/search", "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }] },
+    { "name": "Library", "url": "/library", "icons": [{ "src": "/icon-192.svg", "sizes": "192x192" }] }
   ]
 }

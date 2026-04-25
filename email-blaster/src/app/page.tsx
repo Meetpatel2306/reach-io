@@ -5,7 +5,7 @@ import {
   FileText, Upload, Mail, Send, Users, Check, X, Trash2,
   Save, ChevronRight, ChevronLeft, Download, Activity,
   Clock, Paperclip, Eye, EyeOff, Settings, Loader2, History,
-  Zap, HelpCircle, Shield
+  Zap, HelpCircle, Shield, Key, BookOpen
 } from "lucide-react";
 import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
@@ -261,14 +261,60 @@ export default function Home() {
 
   // Tour steps
   const tourSteps = [
-    { title: "Welcome to Email Blaster Pro!", desc: "A powerful tool to send bulk emails with resume attachments. Let's take a quick tour of all features.", icon: Send },
-    { title: "SMTP Settings", desc: "First, configure your email credentials. Click the gear icon in the header. Use 'Test Connection' to verify without saving, or 'Save Config' to save & verify.", icon: Settings },
-    { title: "Step 1: Upload Resume", desc: "Upload your resume (PDF, DOC, DOCX). It gets attached to every email you send. Saved in your browser for next time.", icon: FileText },
-    { title: "Step 2: Compose Email", desc: "Write your email subject and body. This same content goes to all recipients. Everything auto-saves to your browser.", icon: Mail },
-    { title: "Step 3: Add Recipients", desc: "Add recipients manually (one per line) or upload a CSV file. Supports 'Name <email>' format and bulk CSV imports.", icon: Users },
-    { title: "Step 4: Send", desc: "Review your settings, adjust delay between emails (to avoid spam filters), and hit Send. Watch real-time progress in the Activity log.", icon: Send },
-    { title: "Send History", desc: "Click the clock icon to view all past sends. Group by batch or by email, search, filter, sort — see who got your email and when.", icon: History },
-    { title: "You're all set!", desc: "Start by configuring your SMTP settings. For Gmail, use an App Password from myaccount.google.com/apppasswords. Happy emailing!", icon: Zap },
+    {
+      title: "Welcome to Email Blaster Pro!",
+      desc: "Send bulk emails with resume attachments — perfect for job applications. Let's walk you through everything in 2 minutes.",
+      icon: Send,
+      tip: null,
+    },
+    {
+      title: "First: Get Your App Password",
+      desc: "You'll need an App Password from Gmail (not your regular password). It's a special 16-character code for secure email access.",
+      icon: Key,
+      tip: "Click the book icon in the header for a step-by-step guide with screenshots.",
+    },
+    {
+      title: "Configure SMTP Settings",
+      desc: "Click the gear icon (top-right). Enter your email + App Password. Hit 'Test Connection' to verify it works, then 'Save Config' to save.",
+      icon: Settings,
+      tip: "The gear icon turns green when successfully connected. Use the eye icon to show/hide your password.",
+    },
+    {
+      title: "Upload Your Resume",
+      desc: "Drag & drop or click to upload (PDF, DOC, DOCX). Gets attached to every email automatically. Saved in your browser — no need to re-upload next time.",
+      icon: FileText,
+      tip: "Skip this step if you don't need an attachment.",
+    },
+    {
+      title: "Compose Your Email",
+      desc: "Write your subject line and email body. The same content goes to all recipients. Watch the Live Preview on the right to see exactly how it looks.",
+      icon: Mail,
+      tip: "Everything auto-saves. Come back tomorrow and your draft is still here.",
+    },
+    {
+      title: "Add Recipients",
+      desc: "Three ways to add: type emails manually (one per line), use 'Name <email>' format, or upload a CSV file for bulk imports.",
+      icon: Users,
+      tip: "CSV format: first row is header, then name,email per row. You can mix manual + CSV entries.",
+    },
+    {
+      title: "Review & Send",
+      desc: "Check recipients count and attachment status. Set delay between emails (3-10 seconds recommended) to avoid spam filters. Hit Send and watch real-time progress.",
+      icon: Send,
+      tip: "Test with your own email first before sending to real recipients!",
+    },
+    {
+      title: "Track Everything in History",
+      desc: "Click the clock icon to see all past sends. Two views: 'Batches' (by send session) and 'By Email' (by recipient). Search, filter, sort — see exactly who got your email.",
+      icon: History,
+      tip: "The 'By Email' view shows how many times you contacted each person and their success rate.",
+    },
+    {
+      title: "You're Ready!",
+      desc: "Start by clicking the gear icon to configure your SMTP. Need help getting your App Password? Check the Setup Guide (book icon).",
+      icon: Zap,
+      tip: "You can replay this tour anytime using the ? icon in the header.",
+    },
   ];
 
   // Show tour on first visit
@@ -466,6 +512,13 @@ export default function Home() {
               {failedCount > 0 && <span className="badge badge-error flex items-center gap-1"><X size={12} />{failedCount}</span>}
             </div>
           )}
+          <Link
+            href="/guide"
+            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
+            title="Setup Guide"
+          >
+            <BookOpen size={18} />
+          </Link>
           <Link
             href="/history"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
@@ -942,7 +995,15 @@ export default function Home() {
 
             {/* Content */}
             <h2 className="text-xl font-bold text-white text-center mb-2">{tourSteps[tourStep].title}</h2>
-            <p className="text-sm text-slate-400 text-center leading-relaxed mb-8">{tourSteps[tourStep].desc}</p>
+            <p className="text-sm text-slate-400 text-center leading-relaxed mb-4">{tourSteps[tourStep].desc}</p>
+
+            {/* Tip */}
+            {tourSteps[tourStep].tip && (
+              <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2 mb-6 flex items-start gap-2">
+                <Zap size={12} className="text-amber-400 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-amber-300/80 leading-relaxed">{tourSteps[tourStep].tip}</p>
+              </div>
+            )}
 
             {/* Step counter */}
             <p className="text-[10px] text-slate-600 text-center mb-4 uppercase tracking-widest">{tourStep + 1} of {tourSteps.length}</p>
