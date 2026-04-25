@@ -1,23 +1,25 @@
-import type { Song, UserPlaylist, Settings, DownloadEntry, PlayHistoryEntry } from "./types";
+import type { Song, UserPlaylist, Settings, DownloadEntry, PlayHistoryEntry, EqualizerSettings } from "./types";
 
 const K = {
-  liked: "beatstream-liked-songs",
-  history: "beatstream-play-history",
-  search: "beatstream-search-history",
-  queue: "beatstream-queue",
-  playlists: "beatstream-playlists",
-  savedAlbums: "beatstream-saved-albums",
-  followed: "beatstream-followed-artists",
-  savedPlaylists: "beatstream-saved-playlists",
-  settings: "beatstream-settings",
-  current: "beatstream-current-song",
-  counts: "beatstream-play-counts",
-  downloads: "beatstream-downloads",
-  songCache: "beatstream-song-cache",
-  recentlyPlayed: "beatstream-recently-played",
-  followedArtistsData: "beatstream-followed-data",
-  savedAlbumsData: "beatstream-saved-albums-data",
-  savedPlaylistsData: "beatstream-saved-playlists-data",
+  liked: "bs-liked-songs",
+  history: "bs-play-history",
+  search: "bs-search-history",
+  queue: "bs-queue",
+  queueSource: "bs-queue-source",
+  playlists: "bs-playlists",
+  savedAlbums: "bs-saved-albums",
+  followed: "bs-followed-artists",
+  savedPlaylists: "bs-saved-playlists",
+  settings: "bs-settings",
+  current: "bs-current-song",
+  counts: "bs-play-counts",
+  downloads: "bs-downloads",
+  songCache: "bs-song-cache",
+  recentlyPlayed: "bs-recently-played",
+  iosInstallDismissed: "bs-ios-install-dismissed",
+  blockedSongs: "bs-blocked-songs",
+  blockedArtists: "bs-blocked-artists",
+  totalListenSeconds: "bs-total-listen-seconds",
 } as const;
 
 export const STORAGE_KEYS = K;
@@ -34,11 +36,7 @@ function read<T>(k: string, fallback: T): T {
 
 function write(k: string, v: unknown): void {
   if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(k, JSON.stringify(v));
-  } catch {
-    /* quota exceeded — silently ignore */
-  }
+  try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
 }
 
 export const store = {
@@ -50,11 +48,17 @@ export const store = {
   },
 };
 
+export const defaultEqualizer: EqualizerSettings = {
+  enabled: false,
+  preset: "Flat",
+  gains: [0, 0, 0, 0, 0],
+};
+
 export const defaultSettings: Settings = {
   quality: "160kbps",
   downloadQuality: "320kbps",
   theme: "dark",
-  accentColor: "emerald",
+  accentColor: "green",
   crossfade: 0,
   gapless: true,
   normalize: false,
@@ -63,9 +67,11 @@ export const defaultSettings: Settings = {
   showExplicit: true,
   displayName: "Music Lover",
   avatar: "🎧",
+  vinylRotation: false,
+  animations: true,
+  equalizer: defaultEqualizer,
 };
 
-// Liked songs
 export const liked = {
   list: () => read<string[]>(K.liked, []),
   has: (id: string) => liked.list().includes(id),
@@ -78,19 +84,16 @@ export const liked = {
   },
 };
 
-// Play history
 export const history = {
   list: () => read<PlayHistoryEntry[]>(K.history, []),
   push: (id: string) => {
     const list = history.list();
-    const filtered = list.filter((e) => e.songId !== id).slice(0, 499);
-    filtered.unshift({ songId: id, timestamp: Date.now() });
-    write(K.history, filtered);
+    list.unshift({ songId: id, timestamp: Date.now() });
+    write(K.history, list.slice(0, 1000));
   },
   clear: () => write(K.history, []),
 };
 
-// Recently played (with full song objects for quick access)
 export const recent = {
   list: (): Song[] => read<Song[]>(K.recentlyPlayed, []),
   push: (song: Song) => {
@@ -101,7 +104,6 @@ export const recent = {
   clear: () => write(K.recentlyPlayed, []),
 };
 
-// Play counts
 export const counts = {
   all: () => read<Record<string, number>>(K.counts, {}),
   inc: (id: string) => {
@@ -113,32 +115,37 @@ export const counts = {
     const map = counts.all();
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, n).map(([id]) => id);
   },
+  get: (id: string) => counts.all()[id] || 0,
   clear: () => write(K.counts, {}),
 };
 
-// Search history
+export const listenTime = {
+  get: () => read<number>(K.totalListenSeconds, 0),
+  add: (seconds: number) => write(K.totalListenSeconds, listenTime.get() + seconds),
+  clear: () => write(K.totalListenSeconds, 0),
+};
+
 export const searches = {
   list: () => read<string[]>(K.search, []),
   push: (q: string) => {
     if (!q.trim()) return;
     const list = searches.list().filter((x) => x.toLowerCase() !== q.toLowerCase());
     list.unshift(q);
-    write(K.search, list.slice(0, 20));
+    write(K.search, list.slice(0, 30));
+  },
+  remove: (q: string) => {
+    write(K.search, searches.list().filter((x) => x !== q));
   },
   clear: () => write(K.search, []),
 };
 
-// User playlists
 export const playlists = {
   list: () => read<UserPlaylist[]>(K.playlists, []),
   create: (name: string, description = ""): UserPlaylist => {
     const all = playlists.list();
     const p: UserPlaylist = {
       id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      description,
-      songIds: [],
-      createdAt: Date.now(),
+      name, description, songIds: [], createdAt: Date.now(),
     };
     all.unshift(p);
     write(K.playlists, all);
@@ -151,9 +158,7 @@ export const playlists = {
     all[idx] = { ...all[idx], ...patch };
     write(K.playlists, all);
   },
-  remove: (id: string) => {
-    write(K.playlists, playlists.list().filter((p) => p.id !== id));
-  },
+  remove: (id: string) => write(K.playlists, playlists.list().filter((p) => p.id !== id)),
   addSong: (playlistId: string, songId: string) => {
     const all = playlists.list();
     const idx = all.findIndex((p) => p.id === playlistId);
@@ -168,10 +173,19 @@ export const playlists = {
     all[idx].songIds = all[idx].songIds.filter((s) => s !== songId);
     write(K.playlists, all);
   },
+  reorder: (playlistId: string, from: number, to: number) => {
+    const all = playlists.list();
+    const idx = all.findIndex((p) => p.id === playlistId);
+    if (idx < 0) return;
+    const ids = all[idx].songIds.slice();
+    const [m] = ids.splice(from, 1);
+    ids.splice(to, 0, m);
+    all[idx].songIds = ids;
+    write(K.playlists, all);
+  },
   get: (id: string) => playlists.list().find((p) => p.id === id),
 };
 
-// Saved albums / followed artists / saved external playlists
 export function makeIdSet(key: string) {
   return {
     list: () => read<string[]>(key, []),
@@ -183,14 +197,23 @@ export function makeIdSet(key: string) {
       write(key, list);
       return idx < 0;
     },
+    add: (id: string) => {
+      const list = read<string[]>(key, []);
+      if (!list.includes(id)) { list.unshift(id); write(key, list); }
+    },
+    remove: (id: string) => {
+      write(key, read<string[]>(key, []).filter((x) => x !== id));
+    },
+    clear: () => write(key, []),
   };
 }
 
 export const savedAlbums = makeIdSet(K.savedAlbums);
 export const followedArtists = makeIdSet(K.followed);
 export const savedPlaylists = makeIdSet(K.savedPlaylists);
+export const blockedSongs = makeIdSet(K.blockedSongs);
+export const blockedArtists = makeIdSet(K.blockedArtists);
 
-// Song cache (light metadata for any song the player has touched)
 export const songCache = {
   all: () => read<Record<string, Song>>(K.songCache, {}),
   put: (song: Song) => {
@@ -206,7 +229,6 @@ export const songCache = {
   get: (id: string) => songCache.all()[id],
 };
 
-// Downloads metadata (audio blob lives in IndexedDB)
 export const downloads = {
   list: () => read<DownloadEntry[]>(K.downloads, []),
   has: (id: string) => downloads.list().some((d) => d.songId === id),
@@ -215,8 +237,7 @@ export const downloads = {
     list.unshift(e);
     write(K.downloads, list);
   },
-  remove: (id: string) => {
-    write(K.downloads, downloads.list().filter((d) => d.songId !== id));
-  },
+  remove: (id: string) => write(K.downloads, downloads.list().filter((d) => d.songId !== id)),
   clear: () => write(K.downloads, []),
+  totalBytes: () => downloads.list().reduce((s, d) => s + (d.size || 0), 0),
 };

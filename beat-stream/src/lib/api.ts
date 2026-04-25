@@ -1,41 +1,46 @@
 import type { Album, Artist, Playlist, Song } from "./types";
 
 const BASE = "https://saavn.dev";
+const TIMEOUT = 10_000;
+const TTL = 5 * 60 * 1000;
 
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
+const memCache = new Map<string, { data: unknown; ts: number }>();
+
+interface ApiResponse<T> { success: boolean; data: T; }
+
+async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(id);
+  }
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) throw new Error(`API ${res.status}`);
-  const json = (await res.json()) as ApiResponse<T>;
-  return json.data;
+  const cached = memCache.get(path);
+  if (cached && Date.now() - cached.ts < TTL) return cached.data as T;
+  const url = `${BASE}${path}`;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, TIMEOUT);
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const json = (await res.json()) as ApiResponse<T>;
+      memCache.set(path, { data: json.data, ts: Date.now() });
+      return json.data;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
 }
 
-export interface SearchSongsResult {
+export interface SearchResult<T> {
   total: number;
   start: number;
-  results: Song[];
-}
-
-export interface SearchAlbumsResult {
-  total: number;
-  start: number;
-  results: Album[];
-}
-
-export interface SearchArtistsResult {
-  total: number;
-  start: number;
-  results: Artist[];
-}
-
-export interface SearchPlaylistsResult {
-  total: number;
-  start: number;
-  results: Playlist[];
+  results: T[];
 }
 
 export interface GlobalSearchResult {
@@ -48,36 +53,23 @@ export interface GlobalSearchResult {
 
 export const api = {
   searchSongs: (q: string, page = 0, limit = 20) =>
-    get<SearchSongsResult>(`/api/search/songs?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
-
+    get<SearchResult<Song>>(`/api/search/songs?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
   searchAlbums: (q: string, page = 0, limit = 20) =>
-    get<SearchAlbumsResult>(`/api/search/albums?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
-
+    get<SearchResult<Album>>(`/api/search/albums?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
   searchArtists: (q: string, page = 0, limit = 20) =>
-    get<SearchArtistsResult>(`/api/search/artists?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
-
+    get<SearchResult<Artist>>(`/api/search/artists?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
   searchPlaylists: (q: string, page = 0, limit = 20) =>
-    get<SearchPlaylistsResult>(`/api/search/playlists?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
-
+    get<SearchResult<Playlist>>(`/api/search/playlists?query=${encodeURIComponent(q)}&page=${page}&limit=${limit}`),
   searchAll: (q: string) => get<GlobalSearchResult>(`/api/search?query=${encodeURIComponent(q)}`),
-
   getSong: (id: string) => get<Song[]>(`/api/songs/${id}`),
-
-  getSongs: (ids: string[]) => get<Song[]>(`/api/songs?ids=${ids.join(",")}`),
-
   getAlbum: (id: string) => get<Album>(`/api/albums?id=${id}`),
-
-  getPlaylist: (id: string, page = 0, limit = 50) =>
+  getPlaylist: (id: string, page = 0, limit = 100) =>
     get<Playlist>(`/api/playlists?id=${id}&page=${page}&limit=${limit}`),
-
   getArtist: (id: string) => get<Artist>(`/api/artists/${id}`),
-
   getArtistSongs: (id: string, page = 0, sortBy = "popularity", sortOrder = "desc") =>
     get<{ total: number; songs: Song[] }>(`/api/artists/${id}/songs?page=${page}&sortBy=${sortBy}&sortOrder=${sortOrder}`),
-
   getArtistAlbums: (id: string, page = 0, sortBy = "popularity", sortOrder = "desc") =>
     get<{ total: number; albums: Album[] }>(`/api/artists/${id}/albums?page=${page}&sortBy=${sortBy}&sortOrder=${sortOrder}`),
-
   getLyrics: async (id: string): Promise<string | null> => {
     try {
       const data = await get<{ lyrics: string; snippet?: string; copyright?: string }>(

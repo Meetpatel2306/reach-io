@@ -1,14 +1,7 @@
 export type Quality = "12kbps" | "48kbps" | "96kbps" | "160kbps" | "320kbps";
 
-export interface ImageRef {
-  quality: string;
-  url: string;
-}
-
-export interface DownloadUrl {
-  quality: Quality | string;
-  url: string;
-}
+export interface ImageRef { quality: string; url: string; }
+export interface DownloadUrl { quality: Quality | string; url: string; }
 
 export interface ArtistRef {
   id: string;
@@ -19,11 +12,7 @@ export interface ArtistRef {
   url?: string;
 }
 
-export interface AlbumRef {
-  id: string;
-  name: string;
-  url?: string;
-}
+export interface AlbumRef { id: string; name: string; url?: string; }
 
 export interface Song {
   id: string;
@@ -101,22 +90,20 @@ export interface UserPlaylist {
   songIds: string[];
   songs?: Song[];
   createdAt: number;
+  collaborative?: boolean;
 }
 
-export interface PlayHistoryEntry {
-  songId: string;
-  timestamp: number;
-}
-
-export interface DownloadEntry {
-  songId: string;
-  quality: Quality | string;
-  cachedAt: number;
-  size?: number;
-}
+export interface PlayHistoryEntry { songId: string; timestamp: number; }
+export interface DownloadEntry { songId: string; quality: Quality | string; cachedAt: number; size?: number; }
 
 export type Theme = "dark" | "light" | "amoled" | "system";
-export type AccentColor = "emerald" | "blue" | "purple" | "red" | "orange" | "pink";
+export type AccentColor = "green" | "emerald" | "blue" | "purple" | "red" | "orange" | "pink" | "cyan" | "yellow";
+
+export interface EqualizerSettings {
+  enabled: boolean;
+  preset: string;
+  gains: number[]; // 5 bands: 60, 230, 910, 3600, 14000 Hz
+}
 
 export interface Settings {
   quality: Quality;
@@ -131,4 +118,7 @@ export interface Settings {
   showExplicit: boolean;
   displayName: string;
   avatar: string;
+  vinylRotation: boolean;
+  animations: boolean;
+  equalizer: EqualizerSettings;
 }

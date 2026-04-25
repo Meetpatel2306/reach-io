@@ -2,9 +2,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import type { Song, Quality } from "@/lib/types";
 import { api } from "@/lib/api";
-import { pickDownloadUrl, pickImage, artistsName, shuffle as shuf } from "@/lib/utils";
-import { history, recent, counts, songCache, store, STORAGE_KEYS } from "@/lib/storage";
+import { pickDownloadUrl, pickImage, artistsName } from "@/lib/utils";
+import { history, recent, counts, songCache, store, STORAGE_KEYS, blockedSongs, blockedArtists, listenTime } from "@/lib/storage";
 import { audioCache } from "@/lib/audioCache";
+import { Equalizer } from "@/lib/equalizer";
 import { useSettings } from "./SettingsContext";
 
 type Repeat = "off" | "all" | "one";
@@ -13,11 +14,13 @@ interface PlayerState {
   currentSong: Song | null;
   queue: Song[];
   queueIndex: number;
+  queueSource: string;
   isPlaying: boolean;
   volume: number;
   progress: number;
   currentTime: number;
   duration: number;
+  buffered: number;
   shuffle: boolean;
   repeat: Repeat;
   isBuffering: boolean;
@@ -25,12 +28,12 @@ interface PlayerState {
   expanded: boolean;
   showQueue: boolean;
   showLyrics: boolean;
+  showCarMode: boolean;
 }
 
 interface Ctx extends PlayerState {
-  audioEl: HTMLAudioElement | null;
   playSong: (song: Song) => Promise<void>;
-  playList: (songs: Song[], startIndex?: number) => Promise<void>;
+  playList: (songs: Song[], startIndex?: number, source?: string) => Promise<void>;
   addToQueue: (song: Song) => void;
   playNext: (song: Song) => void;
   togglePlay: () => void;
@@ -48,52 +51,86 @@ interface Ctx extends PlayerState {
   setExpanded: (v: boolean) => void;
   setShowQueue: (v: boolean) => void;
   setShowLyrics: (v: boolean) => void;
+  setShowCarMode: (v: boolean) => void;
   sleepTimer: number | null;
+  sleepEndsAt: number | null;
   setSleepTimer: (mins: number | null, endOfSong?: boolean) => void;
 }
 
 const PlayerCtx = createContext<Ctx | null>(null);
 
+// 1-sec silent MP3 (base64) used to keep iOS media session alive
+const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/80DEKwAAA0gAAAAAVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/80DEVgAAA0gAAAAAVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [state, setState] = useState<PlayerState>({
-    currentSong: null,
-    queue: [],
-    queueIndex: -1,
-    isPlaying: false,
-    volume: 1,
-    progress: 0,
-    currentTime: 0,
-    duration: 0,
-    shuffle: false,
-    repeat: "off",
-    isBuffering: false,
-    isMuted: false,
-    expanded: false,
-    showQueue: false,
-    showLyrics: false,
-  });
-  const [sleepTimer, setSleepTimerState] = useState<number | null>(null);
+  const silentRef = useRef<HTMLAudioElement | null>(null);
+  const eqRef = useRef<Equalizer>(new Equalizer());
+  const lastBlobUrlRef = useRef<string | null>(null);
+  const lastTickRef = useRef<number>(0);
   const sleepTimeoutRef = useRef<number | null>(null);
+  const fadeIntervalRef = useRef<number | null>(null);
   const endOfSongRef = useRef(false);
 
-  // Init audio element
+  const [state, setState] = useState<PlayerState>({
+    currentSong: null, queue: [], queueIndex: -1, queueSource: "",
+    isPlaying: false, volume: 1, progress: 0, currentTime: 0, duration: 0, buffered: 0,
+    shuffle: false, repeat: "off",
+    isBuffering: false, isMuted: false,
+    expanded: false, showQueue: false, showLyrics: false, showCarMode: false,
+  });
+  const [sleepTimer, setSleepTimerState] = useState<number | null>(null);
+  const [sleepEndsAt, setSleepEndsAt] = useState<number | null>(null);
+
+  // Init
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const a = new Audio();
+    const a = document.createElement("audio");
     a.preload = "auto";
     a.crossOrigin = "anonymous";
+    a.setAttribute("playsinline", "true");
+    a.setAttribute("webkit-playsinline", "true");
     audioRef.current = a;
     a.volume = state.volume;
+
+    const sa = document.createElement("audio");
+    sa.src = SILENT_MP3;
+    sa.loop = true;
+    sa.setAttribute("playsinline", "true");
+    sa.setAttribute("webkit-playsinline", "true");
+    silentRef.current = sa;
 
     const onTime = () => {
       const cur = a.currentTime;
       const dur = a.duration || 0;
-      setState((s) => ({ ...s, currentTime: cur, duration: dur, progress: dur ? (cur / dur) * 100 : 0 }));
+      const buf = a.buffered.length ? a.buffered.end(a.buffered.length - 1) : 0;
+      // Track listening time
+      const now = performance.now();
+      if (lastTickRef.current && !a.paused) {
+        const elapsed = (now - lastTickRef.current) / 1000;
+        if (elapsed < 2) listenTime.add(elapsed);
+      }
+      lastTickRef.current = now;
+      setState((s) => ({ ...s, currentTime: cur, duration: dur, buffered: buf, progress: dur ? (cur / dur) * 100 : 0 }));
+      // Update media session position
+      if ("mediaSession" in navigator && (navigator as any).mediaSession.setPositionState) {
+        try {
+          (navigator as any).mediaSession.setPositionState({ duration: dur || 0, playbackRate: 1, position: cur || 0 });
+        } catch {}
+      }
     };
-    const onPlay = () => setState((s) => ({ ...s, isPlaying: true }));
-    const onPause = () => setState((s) => ({ ...s, isPlaying: false }));
+    const onPlay = () => {
+      setState((s) => ({ ...s, isPlaying: true }));
+      stopSilent();
+      try { eqRef.current.resume(); } catch {}
+    };
+    const onPause = () => {
+      setState((s) => ({ ...s, isPlaying: false }));
+      // Start silent loop on iOS to keep session alive
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      if (isIOS) startSilent();
+    };
     const onWaiting = () => setState((s) => ({ ...s, isBuffering: true }));
     const onPlaying = () => setState((s) => ({ ...s, isBuffering: false }));
     const onEnded = () => handleEnded();
@@ -112,8 +149,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.removeEventListener("waiting", onWaiting);
       a.removeEventListener("playing", onPlaying);
       a.removeEventListener("ended", onEnded);
-      a.pause();
-      a.src = "";
+      a.pause(); a.src = "";
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -121,15 +157,39 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Restore on mount
   useEffect(() => {
     const last = store.read<Song | null>(STORAGE_KEYS.current, null);
-    const queueData = store.read<{ songs: Song[]; currentIndex: number }>(STORAGE_KEYS.queue, { songs: [], currentIndex: -1 });
-    if (last) setState((s) => ({ ...s, currentSong: last, queue: queueData.songs.length ? queueData.songs : [last], queueIndex: queueData.currentIndex >= 0 ? queueData.currentIndex : 0 }));
+    const queueData = store.read<{ songs: Song[]; currentIndex: number; source?: string }>(STORAGE_KEYS.queue, { songs: [], currentIndex: -1 });
+    if (last) setState((s) => ({
+      ...s,
+      currentSong: last,
+      queue: queueData.songs.length ? queueData.songs : [last],
+      queueIndex: queueData.currentIndex >= 0 ? queueData.currentIndex : 0,
+      queueSource: queueData.source || "",
+    }));
   }, []);
 
-  // Persist queue/current
   useEffect(() => {
     if (state.currentSong) store.write(STORAGE_KEYS.current, state.currentSong);
-    store.write(STORAGE_KEYS.queue, { songs: state.queue, currentIndex: state.queueIndex });
-  }, [state.currentSong, state.queue, state.queueIndex]);
+    store.write(STORAGE_KEYS.queue, { songs: state.queue, currentIndex: state.queueIndex, source: state.queueSource });
+  }, [state.currentSong, state.queue, state.queueIndex, state.queueSource]);
+
+  // Apply EQ when settings change
+  useEffect(() => {
+    if (!eqRef.current.attached) return;
+    eqRef.current.setGains(settings.equalizer.gains, settings.equalizer.enabled);
+    eqRef.current.setNormalize(settings.normalize);
+  }, [settings.equalizer.gains, settings.equalizer.enabled, settings.normalize]);
+
+  function startSilent() {
+    const sa = silentRef.current;
+    if (!sa) return;
+    sa.play().catch(() => {});
+  }
+  function stopSilent() {
+    const sa = silentRef.current;
+    if (!sa) return;
+    sa.pause();
+    try { sa.currentTime = 0; } catch {}
+  }
 
   const ensureFullSong = useCallback(async (song: Song): Promise<Song> => {
     if (song.downloadUrl?.length) return song;
@@ -138,30 +198,42 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       const data = await api.getSong(song.id);
       const full = Array.isArray(data) ? data[0] : data;
-      if (full) {
-        songCache.put(full);
-        return full;
-      }
+      if (full) { songCache.put(full); return full; }
     } catch {}
     return song;
+  }, []);
+
+  const isAllowed = useCallback((song: Song): boolean => {
+    if (blockedSongs.list().includes(song.id)) return false;
+    const artistIds = (song.artists?.primary || []).map((a) => a.id);
+    if (artistIds.some((id) => blockedArtists.list().includes(id))) return false;
+    return true;
   }, []);
 
   const loadAndPlay = useCallback(async (song: Song) => {
     const a = audioRef.current;
     if (!a) return;
+    if (!isAllowed(song)) return;
+
     setState((s) => ({ ...s, isBuffering: true, currentSong: song }));
     const full = await ensureFullSong(song);
 
-    // Prefer cached blob (offline)
+    // Free prior blob URL
+    if (lastBlobUrlRef.current) {
+      try { URL.revokeObjectURL(lastBlobUrlRef.current); } catch {}
+      lastBlobUrlRef.current = null;
+    }
+
     let src: string | null = null;
     try {
       const blob = await audioCache.get(full.id);
-      if (blob) src = URL.createObjectURL(blob);
+      if (blob) {
+        src = URL.createObjectURL(blob);
+        lastBlobUrlRef.current = src;
+      }
     } catch {}
 
-    if (!src) {
-      src = pickDownloadUrl(full, settings.quality);
-    }
+    if (!src) src = pickDownloadUrl(full, settings.quality);
     if (!src) {
       setState((s) => ({ ...s, isBuffering: false }));
       return;
@@ -169,12 +241,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     a.src = src;
     try {
+      // Attach EQ on first user-initiated play
+      if (!eqRef.current.attached) {
+        eqRef.current.attach(a, settings.equalizer.gains, settings.equalizer.enabled, settings.normalize);
+      }
+      eqRef.current.resume();
+      stopSilent();
       await a.play();
       history.push(full.id);
       counts.inc(full.id);
       recent.push(full);
       songCache.put(full);
-      // Replace queue entry with full song
       setState((s) => {
         const q = s.queue.slice();
         const idx = q.findIndex((x) => x.id === full.id);
@@ -182,35 +259,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return { ...s, currentSong: full, queue: q, isBuffering: false };
       });
       updateMediaSession(full);
-    } catch (e) {
+    } catch {
       setState((s) => ({ ...s, isBuffering: false, isPlaying: false }));
     }
-  }, [ensureFullSong, settings.quality]);
+  }, [ensureFullSong, settings.quality, settings.equalizer, settings.normalize, isAllowed]);
 
   const playSong = useCallback(async (song: Song) => {
-    setState((s) => ({ ...s, queue: [song], queueIndex: 0 }));
+    setState((s) => ({ ...s, queue: [song], queueIndex: 0, queueSource: "" }));
     await loadAndPlay(song);
   }, [loadAndPlay]);
 
-  const playList = useCallback(async (songs: Song[], startIndex = 0) => {
+  const playList = useCallback(async (songs: Song[], startIndex = 0, source = "") => {
     if (!songs.length) return;
     songCache.putMany(songs);
-    setState((s) => ({ ...s, queue: songs, queueIndex: startIndex }));
+    setState((s) => ({ ...s, queue: songs, queueIndex: startIndex, queueSource: source }));
     await loadAndPlay(songs[startIndex]);
   }, [loadAndPlay]);
 
   const addToQueue = useCallback((song: Song) => {
-    setState((s) => {
-      const q = [...s.queue, song];
-      return { ...s, queue: q, queueIndex: s.queueIndex < 0 ? 0 : s.queueIndex };
-    });
+    setState((s) => ({ ...s, queue: [...s.queue, song], queueIndex: s.queueIndex < 0 ? 0 : s.queueIndex }));
   }, []);
 
   const playNext = useCallback((song: Song) => {
     setState((s) => {
       const q = s.queue.slice();
-      const insertAt = s.queueIndex + 1;
-      q.splice(insertAt, 0, song);
+      q.splice(s.queueIndex + 1, 0, song);
       return { ...s, queue: q };
     });
   }, []);
@@ -224,23 +297,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     } else a.pause();
   }, [state.currentSong, loadAndPlay]);
 
-  const goTo = useCallback((idx: number) => {
-    setState((s) => {
-      if (idx < 0 || idx >= s.queue.length) return s;
-      const song = s.queue[idx];
-      loadAndPlay(song);
-      return { ...s, queueIndex: idx };
-    });
-  }, [loadAndPlay]);
-
   const next = useCallback(() => {
     setState((s) => {
       if (!s.queue.length) return s;
       let nextIdx: number;
       if (s.repeat === "one") nextIdx = s.queueIndex;
-      else if (s.shuffle) {
-        nextIdx = Math.floor(Math.random() * s.queue.length);
-      } else {
+      else if (s.shuffle) nextIdx = Math.floor(Math.random() * s.queue.length);
+      else {
         nextIdx = s.queueIndex + 1;
         if (nextIdx >= s.queue.length) {
           if (s.repeat === "all") nextIdx = 0;
@@ -255,14 +318,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const prev = useCallback(() => {
     const a = audioRef.current;
-    if (a && a.currentTime > 3) {
-      a.currentTime = 0;
-      return;
-    }
+    if (a && a.currentTime > 3) { a.currentTime = 0; return; }
     setState((s) => {
       if (!s.queue.length) return s;
       const prevIdx = s.queueIndex - 1;
-      if (prevIdx < 0) return s;
+      if (prevIdx < 0) {
+        if (a) a.currentTime = 0;
+        return s;
+      }
       const song = s.queue[prevIdx];
       loadAndPlay(song);
       return { ...s, queueIndex: prevIdx };
@@ -272,8 +335,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const handleEnded = useCallback(() => {
     if (endOfSongRef.current) {
       endOfSongRef.current = false;
-      const a = audioRef.current;
-      if (a) a.pause();
+      audioRef.current?.pause();
+      setSleepTimerState(null);
+      setSleepEndsAt(null);
       return;
     }
     setState((s) => {
@@ -296,10 +360,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         loadAndPlay(s.queue[0]);
         return { ...s, queueIndex: 0 };
       }
-      // Autoplay similar
-      if (settings.autoplay && s.currentSong) {
-        autoplaySimilar(s.currentSong);
-      }
+      if (settings.autoplay && s.currentSong) autoplaySimilar(s.currentSong);
       return s;
     });
   }, [loadAndPlay, settings.autoplay]);
@@ -308,14 +369,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try {
       const artistName = song.artists?.primary?.[0]?.name || "";
       if (!artistName) return;
-      const res = await api.searchSongs(artistName, 0, 10);
-      const filtered = res.results.filter((s) => s.id !== song.id);
+      const res = await api.searchSongs(artistName, 0, 20);
+      const filtered = res.results.filter((s) => s.id !== song.id && isAllowed(s));
       if (filtered.length) {
-        setState((s) => ({ ...s, queue: [...s.queue, ...filtered], queueIndex: s.queue.length }));
+        setState((s) => ({ ...s, queue: [...s.queue, ...filtered], queueIndex: s.queue.length, queueSource: `Similar to ${artistName}` }));
         loadAndPlay(filtered[0]);
       }
     } catch {}
-  }, [loadAndPlay]);
+  }, [loadAndPlay, isAllowed]);
 
   const seek = useCallback((percent: number) => {
     const a = audioRef.current;
@@ -326,7 +387,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seekTo = useCallback((seconds: number) => {
     const a = audioRef.current;
     if (!a) return;
-    a.currentTime = seconds;
+    a.currentTime = Math.max(0, Math.min(a.duration || 0, seconds));
   }, []);
 
   const setVolume = useCallback((v: number) => {
@@ -343,7 +404,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleShuffle = useCallback(() => setState((s) => ({ ...s, shuffle: !s.shuffle })), []);
-
   const toggleRepeat = useCallback(() => setState((s) => {
     const order: Repeat[] = ["off", "all", "one"];
     return { ...s, repeat: order[(order.indexOf(s.repeat) + 1) % 3] };
@@ -352,7 +412,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const removeFromQueue = useCallback((index: number) => {
     setState((s) => {
       if (index < 0 || index >= s.queue.length) return s;
-      if (index === s.queueIndex) return s; // don't remove currently playing
+      if (index === s.queueIndex) return s;
       const q = s.queue.slice();
       q.splice(index, 1);
       let qi = s.queueIndex;
@@ -384,52 +444,69 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const setExpanded = useCallback((v: boolean) => setState((s) => ({ ...s, expanded: v, showLyrics: v ? s.showLyrics : false, showQueue: v ? s.showQueue : false })), []);
   const setShowQueue = useCallback((v: boolean) => setState((s) => ({ ...s, showQueue: v, showLyrics: v ? false : s.showLyrics })), []);
   const setShowLyrics = useCallback((v: boolean) => setState((s) => ({ ...s, showLyrics: v, showQueue: v ? false : s.showQueue })), []);
+  const setShowCarMode = useCallback((v: boolean) => setState((s) => ({ ...s, showCarMode: v })), []);
 
   const setSleepTimer = useCallback((mins: number | null, endOfSong = false) => {
-    if (sleepTimeoutRef.current) {
-      window.clearTimeout(sleepTimeoutRef.current);
-      sleepTimeoutRef.current = null;
+    if (sleepTimeoutRef.current) { window.clearTimeout(sleepTimeoutRef.current); sleepTimeoutRef.current = null; }
+    if (fadeIntervalRef.current) { window.clearInterval(fadeIntervalRef.current); fadeIntervalRef.current = null; }
+    if (mins == null && !endOfSong) {
+      setSleepTimerState(null); setSleepEndsAt(null); endOfSongRef.current = false; return;
     }
+    if (endOfSong) { endOfSongRef.current = true; setSleepTimerState(0); setSleepEndsAt(null); return; }
     setSleepTimerState(mins);
-    endOfSongRef.current = endOfSong;
-    if (endOfSong) return;
-    if (mins == null) return;
+    setSleepEndsAt(Date.now() + mins! * 60_000);
     sleepTimeoutRef.current = window.setTimeout(() => {
       const a = audioRef.current;
-      if (a) a.pause();
-      setSleepTimerState(null);
-    }, mins * 60_000);
+      if (!a) return;
+      const startVol = a.volume;
+      let step = 0;
+      const total = 20;
+      fadeIntervalRef.current = window.setInterval(() => {
+        step++;
+        a.volume = Math.max(0, startVol * (1 - step / total));
+        if (step >= total) {
+          if (fadeIntervalRef.current) window.clearInterval(fadeIntervalRef.current);
+          fadeIntervalRef.current = null;
+          a.pause();
+          a.volume = startVol;
+          setSleepTimerState(null);
+          setSleepEndsAt(null);
+        }
+      }, 500);
+    }, mins! * 60_000 - 10_000);
   }, []);
 
-  // Media Session API
   function updateMediaSession(song: Song) {
     if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: song.name,
-      artist: artistsName(song),
-      album: song.album?.name || "",
-      artwork: [
-        { src: pickImage(song.image, "low"), sizes: "96x96", type: "image/jpeg" },
-        { src: pickImage(song.image, "med"), sizes: "256x256", type: "image/jpeg" },
-        { src: pickImage(song.image, "high"), sizes: "512x512", type: "image/jpeg" },
-      ],
-    });
-    navigator.mediaSession.setActionHandler("play", () => audioRef.current?.play());
-    navigator.mediaSession.setActionHandler("pause", () => audioRef.current?.pause());
-    navigator.mediaSession.setActionHandler("nexttrack", () => next());
-    navigator.mediaSession.setActionHandler("previoustrack", () => prev());
-    navigator.mediaSession.setActionHandler("seekto", (d) => { if (d.seekTime != null) seekTo(d.seekTime); });
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: song.name,
+        artist: artistsName(song),
+        album: song.album?.name || "",
+        artwork: [
+          { src: pickImage(song.image, "low"), sizes: "96x96", type: "image/jpeg" },
+          { src: pickImage(song.image, "med"), sizes: "256x256", type: "image/jpeg" },
+          { src: pickImage(song.image, "high"), sizes: "512x512", type: "image/jpeg" },
+        ],
+      });
+      navigator.mediaSession.setActionHandler("play", () => audioRef.current?.play());
+      navigator.mediaSession.setActionHandler("pause", () => audioRef.current?.pause());
+      navigator.mediaSession.setActionHandler("nexttrack", () => next());
+      navigator.mediaSession.setActionHandler("previoustrack", () => prev());
+      navigator.mediaSession.setActionHandler("seekto", (d) => { if (d.seekTime != null) seekTo(d.seekTime); });
+      navigator.mediaSession.setActionHandler("seekforward", () => seekTo((audioRef.current?.currentTime || 0) + 10));
+      navigator.mediaSession.setActionHandler("seekbackward", () => seekTo((audioRef.current?.currentTime || 0) - 10));
+    } catch {}
   }
 
   return (
     <PlayerCtx.Provider value={{
       ...state,
-      audioEl: audioRef.current,
       playSong, playList, addToQueue, playNext, togglePlay, next, prev,
       seek, seekTo, setVolume, toggleMute, toggleShuffle, toggleRepeat,
       removeFromQueue, clearQueue, reorderQueue,
-      setExpanded, setShowQueue, setShowLyrics,
-      sleepTimer, setSleepTimer,
+      setExpanded, setShowQueue, setShowLyrics, setShowCarMode,
+      sleepTimer, sleepEndsAt, setSleepTimer,
     }}>
       {children}
     </PlayerCtx.Provider>

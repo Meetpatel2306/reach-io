@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import type { Settings } from "@/lib/types";
-import { defaultSettings, store, STORAGE_KEYS } from "@/lib/storage";
+import { defaultSettings, defaultEqualizer, store, STORAGE_KEYS } from "@/lib/storage";
 
 interface Ctx {
   settings: Settings;
@@ -15,12 +15,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = store.read<Settings>(STORAGE_KEYS.settings, defaultSettings);
-    setSettings({ ...defaultSettings, ...stored });
+    setSettings({ ...defaultSettings, ...stored, equalizer: { ...defaultEqualizer, ...(stored.equalizer || {}) } });
   }, []);
 
   useEffect(() => {
     const root = document.documentElement;
-    const body = document.body;
     let theme = settings.theme;
     if (theme === "system") {
       theme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
@@ -28,8 +27,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     root.dataset.theme = theme;
     root.dataset.accent = settings.accentColor;
     root.dataset.compact = String(settings.compact);
-    body.className = `theme-${theme} accent-${settings.accentColor}`;
-  }, [settings.theme, settings.accentColor, settings.compact]);
+    root.dataset.animations = String(settings.animations);
+  }, [settings.theme, settings.accentColor, settings.compact, settings.animations]);
 
   const update = useCallback((patch: Partial<Settings>) => {
     setSettings((s) => {

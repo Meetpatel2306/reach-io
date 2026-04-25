@@ -259,61 +259,124 @@ export default function Home() {
     addLog("SMTP config removed");
   };
 
-  // Tour steps
-  const tourSteps = [
+  // Tour steps — type "steps" shows numbered boxes, type "cards" shows card grid, type "default" is normal
+  type TourType = "default" | "steps" | "cards";
+  interface TourStep {
+    title: string;
+    desc: string;
+    icon: typeof Send;
+    tip: string | null;
+    type: TourType;
+    steps?: string[];
+    cards?: { label: string; value: string; color: string }[];
+  }
+  const tourSteps: TourStep[] = [
     {
       title: "Welcome to Email Blaster Pro!",
-      desc: "Send bulk emails with resume attachments — perfect for job applications. Let's walk you through everything in 2 minutes.",
+      desc: "Send bulk emails with resume attachments — perfect for job applications. Let's walk through everything.",
       icon: Send,
       tip: null,
+      type: "default",
     },
     {
-      title: "First: Get Your App Password",
-      desc: "You'll need an App Password from Gmail (not your regular password). It's a special 16-character code for secure email access.",
+      title: "Get Your Gmail App Password",
+      desc: "You need a special App Password (not your regular password). Here's how:",
       icon: Key,
-      tip: "Click the book icon in the header for a step-by-step guide with screenshots.",
+      tip: "For Outlook, Yahoo & others — check the Setup Guide (book icon in header).",
+      type: "steps",
+      steps: [
+        "Go to myaccount.google.com/security",
+        "Enable 2-Step Verification",
+        "Go to myaccount.google.com/apppasswords",
+        "Create new password, name it \"Email Blaster\"",
+        "Copy the 16-character code (shown only once!)",
+      ],
     },
     {
       title: "Configure SMTP Settings",
-      desc: "Click the gear icon (top-right). Enter your email + App Password. Hit 'Test Connection' to verify it works, then 'Save Config' to save.",
+      desc: "Click the gear icon (top-right corner) to open Settings.",
       icon: Settings,
-      tip: "The gear icon turns green when successfully connected. Use the eye icon to show/hide your password.",
+      tip: "Gear icon turns green when connected. Eye icon shows/hides password.",
+      type: "cards",
+      cards: [
+        { label: "Email", value: "you@gmail.com", color: "text-violet-300" },
+        { label: "Password", value: "paste 16-char code", color: "text-amber-300" },
+        { label: "Host", value: "smtp.gmail.com", color: "text-slate-300" },
+        { label: "Port", value: "587 / STARTTLS", color: "text-slate-300" },
+      ],
     },
     {
-      title: "Upload Your Resume",
-      desc: "Drag & drop or click to upload (PDF, DOC, DOCX). Gets attached to every email automatically. Saved in your browser — no need to re-upload next time.",
+      title: "Upload Resume",
+      desc: "Drag & drop your resume (PDF, DOC, DOCX). Gets attached to every email. Saved in browser — no re-upload needed.",
       icon: FileText,
-      tip: "Skip this step if you don't need an attachment.",
+      tip: "Optional — skip if you don't need attachments.",
+      type: "default",
     },
     {
-      title: "Compose Your Email",
-      desc: "Write your subject line and email body. The same content goes to all recipients. Watch the Live Preview on the right to see exactly how it looks.",
+      title: "Compose Email",
+      desc: "Write subject + body. Same content for all recipients. Watch the Live Preview on the right side.",
       icon: Mail,
-      tip: "Everything auto-saves. Come back tomorrow and your draft is still here.",
+      tip: "Auto-saves to browser. Your draft persists between sessions.",
+      type: "default",
     },
     {
       title: "Add Recipients",
-      desc: "Three ways to add: type emails manually (one per line), use 'Name <email>' format, or upload a CSV file for bulk imports.",
+      desc: "Multiple ways to add recipients:",
       icon: Users,
-      tip: "CSV format: first row is header, then name,email per row. You can mix manual + CSV entries.",
+      tip: "You can combine all methods — they stack together.",
+      type: "steps",
+      steps: [
+        "Type emails manually (one per line)",
+        "Use format: John <john@company.com>",
+        "Upload CSV file (header + name,email rows)",
+        "Remove individuals with X, or Clear All",
+      ],
     },
     {
       title: "Review & Send",
-      desc: "Check recipients count and attachment status. Set delay between emails (3-10 seconds recommended) to avoid spam filters. Hit Send and watch real-time progress.",
+      desc: "Final step — check everything and send.",
       icon: Send,
-      tip: "Test with your own email first before sending to real recipients!",
+      tip: "Always test with your own email first!",
+      type: "steps",
+      steps: [
+        "Review recipients count & attachment",
+        "Set delay: 3-10 seconds (avoids spam filters)",
+        "Hit Send — watch real-time Activity log",
+        "Results show sent/failed for each recipient",
+      ],
     },
     {
-      title: "Track Everything in History",
-      desc: "Click the clock icon to see all past sends. Two views: 'Batches' (by send session) and 'By Email' (by recipient). Search, filter, sort — see exactly who got your email.",
+      title: "Track in History",
+      desc: "Click clock icon to view all past sends with two powerful views.",
       icon: History,
-      tip: "The 'By Email' view shows how many times you contacted each person and their success rate.",
+      tip: "\"By Email\" view shows repeat contacts & per-person success rates.",
+      type: "cards",
+      cards: [
+        { label: "Batches", value: "Grouped by send session", color: "text-violet-300" },
+        { label: "By Email", value: "Grouped by recipient", color: "text-blue-300" },
+        { label: "Search", value: "By subject, email, name", color: "text-emerald-300" },
+        { label: "Filter", value: "Success / Failed / All", color: "text-amber-300" },
+      ],
+    },
+    {
+      title: "Header Icons Guide",
+      desc: "Quick reference for all the icons in the top-right corner:",
+      icon: HelpCircle,
+      tip: "Replay this tour anytime with the ? icon.",
+      type: "cards",
+      cards: [
+        { label: "Book", value: "Setup Guide & FAQ", color: "text-violet-300" },
+        { label: "Clock", value: "Send History", color: "text-blue-300" },
+        { label: "Gear", value: "SMTP Settings", color: "text-emerald-300" },
+        { label: "?", value: "Replay this Tour", color: "text-amber-300" },
+      ],
     },
     {
       title: "You're Ready!",
-      desc: "Start by clicking the gear icon to configure your SMTP. Need help getting your App Password? Check the Setup Guide (book icon).",
+      desc: "Start by clicking the gear icon to configure SMTP. Need help? Check the Setup Guide (book icon) for detailed steps.",
       icon: Zap,
-      tip: "You can replay this tour anytime using the ? icon in the header.",
+      tip: null,
+      type: "default",
     },
   ];
 
@@ -976,42 +1039,67 @@ export default function Home() {
       </div>
 
       {/* Product Tour Overlay */}
-      {showTour && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
-          <div className="glass-card max-w-md w-full !border-violet-500/30 relative">
-            {/* Progress dots */}
-            <div className="flex items-center justify-center gap-1.5 mb-6">
-              {tourSteps.map((_, i) => (
-                <div key={i} className={`h-1.5 rounded-full transition-all ${i === tourStep ? "w-6 bg-violet-400" : i < tourStep ? "w-1.5 bg-violet-400/50" : "w-1.5 bg-slate-700"}`} />
-              ))}
+      {showTour && (() => {
+        const step = tourSteps[tourStep];
+        const Icon = step.icon;
+        return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}>
+          <div className="glass-card max-w-lg w-full !border-violet-500/30 relative">
+            {/* Progress bar */}
+            <div className="h-1 bg-slate-800 rounded-full mb-6 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-300" style={{ width: `${((tourStep + 1) / tourSteps.length) * 100}%` }} />
             </div>
 
-            {/* Icon */}
-            {(() => { const Icon = tourSteps[tourStep].icon; return (
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mx-auto mb-4">
-                <Icon size={28} className="text-white" />
+            {/* Icon + Title row */}
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0">
+                <Icon size={22} className="text-white" />
               </div>
-            ); })()}
+              <div>
+                <h2 className="text-lg font-bold text-white leading-tight">{step.title}</h2>
+                <p className="text-[10px] text-slate-600 uppercase tracking-widest">{tourStep + 1} of {tourSteps.length}</p>
+              </div>
+            </div>
 
-            {/* Content */}
-            <h2 className="text-xl font-bold text-white text-center mb-2">{tourSteps[tourStep].title}</h2>
-            <p className="text-sm text-slate-400 text-center leading-relaxed mb-4">{tourSteps[tourStep].desc}</p>
+            {/* Description */}
+            <p className="text-sm text-slate-400 leading-relaxed mb-4">{step.desc}</p>
 
-            {/* Tip */}
-            {tourSteps[tourStep].tip && (
-              <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2 mb-6 flex items-start gap-2">
-                <Zap size={12} className="text-amber-400 mt-0.5 shrink-0" />
-                <p className="text-[11px] text-amber-300/80 leading-relaxed">{tourSteps[tourStep].tip}</p>
+            {/* Steps (numbered boxes) */}
+            {step.type === "steps" && step.steps && (
+              <div className="space-y-2 mb-4">
+                {step.steps.map((s, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-slate-800/40 rounded-lg px-3 py-2.5 border border-slate-700/30">
+                    <span className="w-5 h-5 rounded-md bg-violet-500/20 text-violet-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                    <p className="text-xs text-slate-300 leading-relaxed">{s}</p>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Step counter */}
-            <p className="text-[10px] text-slate-600 text-center mb-4 uppercase tracking-widest">{tourStep + 1} of {tourSteps.length}</p>
+            {/* Cards (info boxes) */}
+            {step.type === "cards" && step.cards && (
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {step.cards.map((c, i) => (
+                  <div key={i} className="bg-slate-800/40 rounded-lg px-3 py-2.5 border border-slate-700/30">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">{c.label}</p>
+                    <p className={`text-xs font-medium ${c.color}`}>{c.value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Tip */}
+            {step.tip && (
+              <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2 mb-5 flex items-start gap-2">
+                <Zap size={12} className="text-amber-400 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-amber-300/80 leading-relaxed">{step.tip}</p>
+              </div>
+            )}
 
             {/* Navigation */}
             <div className="flex gap-3">
               {tourStep > 0 && (
-                <button onClick={() => setTourStep(tourStep - 1)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-sm flex-1">
+                <button onClick={() => setTourStep(tourStep - 1)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-sm flex-1 justify-center">
                   <ChevronLeft size={16} />Back
                 </button>
               )}
@@ -1020,21 +1108,22 @@ export default function Home() {
                   Next<ChevronRight size={16} />
                 </button>
               ) : (
-                <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="btn-primary flex items-center justify-center gap-1.5 flex-1">
-                  <Zap size={16} />Get Started
+                <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); setShowSettings(true); }} className="btn-primary flex items-center justify-center gap-1.5 flex-1">
+                  <Zap size={16} />Configure SMTP Now
                 </button>
               )}
             </div>
 
             {/* Skip */}
             {tourStep < tourSteps.length - 1 && (
-              <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="text-xs text-slate-600 hover:text-slate-400 mt-4 block mx-auto transition-colors">
+              <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="text-xs text-slate-600 hover:text-slate-400 mt-3 block mx-auto transition-colors">
                 Skip tour
               </button>
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
