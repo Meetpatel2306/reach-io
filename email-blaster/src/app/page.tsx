@@ -187,29 +187,18 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load SMTP config: localStorage first, then server env fallback
+  // Load SMTP config: ONLY from localStorage (single source of truth)
   useEffect(() => {
     const saved = loadSmtp();
     if (saved && saved.smtpUser && saved.smtpPass) {
-      setSmtpUser(saved.smtpUser);
-      setSmtpHost(saved.smtpHost || "smtp.gmail.com");
-      setSmtpPort(saved.smtpPort || "587");
-      setSmtpPass(saved.smtpPass || "");
-      setSmtpSecurity(saved.smtpSecurity || "starttls");
+      setSmtpUser(saved.smtpUser.trim());
+      setSmtpHost(saved.smtpHost?.trim() || "smtp.gmail.com");
+      setSmtpPort(saved.smtpPort?.trim() || "587");
+      setSmtpPass(saved.smtpPass.trim());
+      setSmtpSecurity(saved.smtpSecurity?.trim() || "starttls");
       setSmtpConfigured(true);
-    } else {
-      // Fallback: check if server has env vars configured
-      fetch("/api/config").then((r) => r.json()).then((cfg) => {
-        if (cfg.configured) {
-          setSmtpUser(cfg.smtpUser || "");
-          setSmtpHost(cfg.smtpHost || "smtp.gmail.com");
-          setSmtpPort(cfg.smtpPort || "587");
-          setSmtpSecurity(cfg.smtpSecurity || "starttls");
-          setSmtpConfigured(true);
-        }
-        // Don't auto-open settings — let the tour guide them
-      }).catch(() => {});
     }
+    // No env var fallback — user must configure via UI settings
   }, []);
 
   useEffect(() => {

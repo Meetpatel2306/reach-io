@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0a0a;
+  --card: #181818;
+  --card-hover: #282828;
+  --text: #ffffff;
+  --text-secondary: #a1a1a1;
+  --accent: #10b981;
+  --accent-hover: #34d399;
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --card: #f3f4f6;
+  --card-hover: #e5e7eb;
+  --text: #0a0a0a;
+  --text-secondary: #6b7280;
+}
+
+[data-theme="amoled"] {
+  --bg: #000000;
+  --card: #111111;
+  --card-hover: #1a1a1a;
+  --text: #ffffff;
+  --text-secondary: #a1a1a1;
+}
+
+[data-accent="emerald"] { --accent: #10b981; --accent-hover: #34d399; }
+[data-accent="blue"]    { --accent: #3b82f6; --accent-hover: #60a5fa; }
+[data-accent="purple"]  { --accent: #a855f7; --accent-hover: #c084fc; }
+[data-accent="red"]     { --accent: #ef4444; --accent-hover: #f87171; }
+[data-accent="orange"]  { --accent: #f97316; --accent-hover: #fb923c; }
+[data-accent="pink"]    { --accent: #ec4899; --accent-hover: #f472b6; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #404040; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #525252; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.bg-bg { background: var(--bg); }
+.bg-card { background: var(--card); }
+.bg-card-hover { background: var(--card-hover); }
+.text-secondary { color: var(--text-secondary); }
+.bg-accent { background: var(--accent); }
+.text-accent { color: var(--accent); }
+.border-accent { border-color: var(--accent); }
+.hover\:bg-accent-hover:hover { background: var(--accent-hover); }
+.hover\:text-accent:hover { color: var(--accent); }
+.ring-accent { --tw-ring-color: var(--accent); }
+
+.line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+.skeleton {
+  background: linear-gradient(90deg, #1f1f1f 0%, #2a2a2a 50%, #1f1f1f 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee 12s linear infinite;
+}
+
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: #404040;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text);
+  cursor: pointer;
+  box-shadow: 0 0 0 0 var(--accent);
+  transition: box-shadow 0.15s;
+}
+.range:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.1);
+}
+.range::-moz-range-thumb {
+  width: 12px; height: 12px; border: none; border-radius: 50%; background: var(--text); cursor: pointer;
+}
+
+.range-accent {
+  background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--val, 0%), #404040 var(--val, 0%), #404040 100%);
+}
+
+.glass {
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.card-hover {
+  transition: background 0.2s, transform 0.2s;
+}
+.card-hover:hover {
+  background: var(--card-hover);
+}
+
+.fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.slide-up { animation: slideUp 0.3s ease-out; }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.spin-slow { animation: spin 3s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+button:focus-visible, a:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Hide scrollbar on horizontal scrollers but allow scroll */
+.h-scroll {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.h-scroll > * { scroll-snap-align: start; flex-shrink: 0; }

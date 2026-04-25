@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const configured = !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+  // Config is now managed entirely in the browser (localStorage)
+  // This endpoint only returns non-sensitive defaults
   return NextResponse.json({
-    smtpHost: process.env.SMTP_HOST || "smtp.gmail.com",
-    smtpPort: process.env.SMTP_PORT || "587",
-    smtpUser: configured ? process.env.SMTP_USER : "",
-    smtpSecurity: process.env.SMTP_SECURITY || "starttls",
-    configured,
+    smtpHost: "smtp.gmail.com",
+    smtpPort: "587",
+    smtpSecurity: "starttls",
   });
 }

@@ -9,12 +9,12 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
-    // SMTP credentials: request > env vars
-    const smtpHost = (formData.get("smtpHost") as string) || process.env.SMTP_HOST || "smtp.gmail.com";
-    const smtpPort = parseInt((formData.get("smtpPort") as string) || process.env.SMTP_PORT || "587");
-    const smtpUser = (formData.get("smtpUser") as string) || process.env.SMTP_USER || "";
-    const smtpPass = (formData.get("smtpPass") as string) || process.env.SMTP_PASS || "";
-    const security = (formData.get("smtpSecurity") as string) || process.env.SMTP_SECURITY || "starttls";
+    // SMTP credentials: must come from the request (sent by client from localStorage)
+    const smtpHost = ((formData.get("smtpHost") as string) || "smtp.gmail.com").trim();
+    const smtpPort = parseInt(((formData.get("smtpPort") as string) || "587").trim());
+    const smtpUser = ((formData.get("smtpUser") as string) || "").trim();
+    const smtpPass = ((formData.get("smtpPass") as string) || "").trim();
+    const security = ((formData.get("smtpSecurity") as string) || "starttls").trim();
 
     const recipientsJson = formData.get("recipients") as string;
     const subject = formData.get("subject") as string;
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No recipients provided" }, { status: 400 });
     }
     if (!smtpUser || !smtpPass) {
-      return NextResponse.json({ error: "SMTP not configured. Open Settings and add your credentials." }, { status: 400 });
+      return NextResponse.json({ error: "SMTP credentials missing. Configure in Settings and try again." }, { status: 400 });
     }
 
     const isGmail = smtpHost.includes("gmail");
