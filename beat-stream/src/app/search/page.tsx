@@ -1,18 +1,34 @@
 "use client";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search as SearchIcon, X, Mic, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Search as SearchIcon, X, Mic, Loader2, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Album, Artist, Playlist, Song } from "@/lib/types";
 import { searches } from "@/lib/storage";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useToast } from "@/contexts/ToastContext";
+import { usePlayer } from "@/contexts/PlayerContext";
+import { decodeHtml, pickImage, artistsName } from "@/lib/utils";
 import { SongRow } from "@/components/SongRow";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { PlaylistCard } from "@/components/PlaylistCard";
 
 type Tab = "all" | "songs" | "albums" | "artists" | "playlists";
+
+const TRENDING = ["Arijit Singh", "Diljit Dosanjh", "Drake", "Taylor Swift", "Pritam", "AP Dhillon", "The Weeknd", "Karan Aujla", "Anirudh", "Atif Aslam", "Shreya Ghoshal", "Badshah"];
+
+const BROWSE = [
+  { name: "Hindi", color: "from-orange-500 to-red-600" },
+  { name: "English", color: "from-blue-500 to-purple-600" },
+  { name: "Punjabi", color: "from-yellow-500 to-orange-600" },
+  { name: "Tamil", color: "from-emerald-500 to-teal-600" },
+  { name: "Romantic", color: "from-pink-500 to-rose-600" },
+  { name: "Party", color: "from-purple-500 to-pink-600" },
+  { name: "Workout", color: "from-red-500 to-orange-600" },
+  { name: "Chill", color: "from-teal-500 to-cyan-600" },
+];
 
 function SearchInner() {
   const router = useRouter();
@@ -30,7 +46,9 @@ function SearchInner() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const { toast } = useToast();
+  const player = usePlayer();
   const recognitionRef = useRef<any>(null);
+  const [listening, setListening] = useState(false);
 
   useEffect(() => { setRecent(searches.list()); }, []);
 
@@ -81,13 +99,11 @@ function SearchInner() {
     const r = recognitionRef.current;
     r.lang = "en-US";
     r.interimResults = false;
-    r.onresult = (e: any) => {
-      const text = e.results[0][0].transcript;
-      submit(text);
-    };
-    r.onerror = () => toast("Voice search error", "error");
+    r.onresult = (e: any) => { setListening(false); submit(e.results[0][0].transcript); };
+    r.onerror = () => { setListening(false); toast("Voice search error", "error"); };
+    r.onend = () => setListening(false);
+    setListening(true);
     r.start();
-    toast("Listening...", "info");
   }
 
   const tabs: { key: Tab; label: string }[] = [
@@ -97,6 +113,16 @@ function SearchInner() {
     { key: "artists", label: "Artists" },
     { key: "playlists", label: "Playlists" },
   ];
+
+  // Top result: prefer top artist if exact-ish match, else first song
+  const topResult = (() => {
+    if (!query) return null;
+    const q = query.toLowerCase();
+    const a = artists.find((ar) => ar.name?.toLowerCase().includes(q));
+    if (a) return { type: "artist" as const, item: a };
+    if (songs[0]) return { type: "song" as const, item: songs[0] };
+    return null;
+  })();
 
   return (
     <div className="px-4 md:px-6 lg:px-8 py-6 fade-in">
@@ -109,42 +135,60 @@ function SearchInner() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit(query)}
-            placeholder="Songs, albums, artists, podcasts"
-            className="w-full bg-card rounded-full pl-12 pr-24 py-3 text-base outline-none focus:ring-2 focus:ring-accent"
+            placeholder="What do you want to listen to?"
+            className="w-full bg-white text-black rounded-full pl-12 pr-24 py-3 text-base outline-none"
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
             {query && (
-              <button onClick={() => setQuery("")} className="p-2 text-secondary hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
+              <button onClick={() => setQuery("")} className="p-2 text-gray-500 hover:text-black"><X className="w-4 h-4" /></button>
             )}
-            <button onClick={startVoice} className="p-2 text-secondary hover:text-accent">
+            <button onClick={startVoice} className={`p-2 ${listening ? "text-accent animate-pulse" : "text-gray-500 hover:text-accent"}`}>
               <Mic className="w-5 h-5" />
             </button>
           </div>
         </div>
+        {listening && <div className="text-center text-accent text-sm mt-2 animate-pulse">Listening...</div>}
       </div>
 
-      {!query && recent.length > 0 && (
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold">Recent searches</h2>
-            <button onClick={() => { searches.clear(); setRecent([]); }} className="text-xs text-secondary hover:text-white">
-              Clear all
-            </button>
-          </div>
-          <div className="space-y-1">
-            {recent.map((q) => (
-              <button
-                key={q}
-                onClick={() => submit(q)}
-                className="w-full flex items-center gap-3 px-3 py-2 hover:bg-card rounded-lg text-left"
-              >
-                <SearchIcon className="w-4 h-4 text-secondary" />
-                <span className="flex-1">{q}</span>
-              </button>
-            ))}
-          </div>
+      {!query && (
+        <div className="max-w-4xl mx-auto space-y-8">
+          {recent.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold">Recent searches</h2>
+                <button onClick={() => { searches.clear(); setRecent([]); }} className="text-xs text-secondary hover:text-white">Clear all</button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {recent.map((q) => (
+                  <span key={q} className="inline-flex items-center gap-1 bg-card hover:bg-card-hover rounded-full pl-3 pr-1 py-1 text-sm">
+                    <button onClick={() => submit(q)}>{q}</button>
+                    <button onClick={() => { searches.remove(q); setRecent(searches.list()); }} className="text-secondary hover:text-white p-1"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section>
+            <h2 className="text-lg font-bold mb-3">Trending searches</h2>
+            <div className="flex flex-wrap gap-2">
+              {TRENDING.map((t) => (
+                <button key={t} onClick={() => submit(t)} className="bg-card hover:bg-card-hover rounded-full px-4 py-1.5 text-sm">{t}</button>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold mb-3">Browse all</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {BROWSE.map((b) => (
+                <Link key={b.name} href={`/search?q=${encodeURIComponent(b.name + " hits")}`}
+                  className={`aspect-square rounded-xl bg-gradient-to-br ${b.color} p-4 hover:scale-[1.03] transition flex items-end`}>
+                  <span className="font-bold text-base">{b.name}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
         </div>
       )}
 
@@ -152,11 +196,8 @@ function SearchInner() {
         <>
           <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar">
             {tabs.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap ${tab === t.key ? "bg-white text-black" : "bg-card text-secondary hover:text-white"}`}
-              >
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap ${tab === t.key ? "bg-white text-black" : "bg-card text-secondary hover:text-white"}`}>
                 {t.label}
               </button>
             ))}
@@ -168,12 +209,38 @@ function SearchInner() {
             <>
               {tab === "all" && (
                 <div className="space-y-8">
-                  {songs.length > 0 && (
-                    <section>
-                      <h2 className="text-xl font-bold mb-3">Songs</h2>
-                      <div>{songs.slice(0, 5).map((s, i) => <SongRow key={s.id} song={s} index={i} queue={songs} />)}</div>
-                    </section>
-                  )}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {topResult && (
+                      <section className="lg:col-span-1">
+                        <h3 className="text-xl font-bold mb-3">Top Result</h3>
+                        {topResult.type === "song" ? (
+                          <div className="bg-card hover:bg-card-hover rounded-lg p-5 group cursor-pointer" onClick={() => player.playSong(topResult.item)}>
+                            <img src={pickImage(topResult.item.image, "high")} alt="" className="w-24 h-24 rounded shadow-xl mb-4 object-cover" />
+                            <div className="text-2xl font-bold line-clamp-1">{decodeHtml(topResult.item.name)}</div>
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="bg-white/20 px-2 py-0.5 rounded text-xs font-semibold">SONG</span>
+                              <span className="text-sm text-secondary line-clamp-1">{decodeHtml(artistsName(topResult.item))}</span>
+                            </div>
+                            <button className="mt-4 bg-accent text-black rounded-full p-3 opacity-0 group-hover:opacity-100 transition shadow-xl ml-auto block">
+                              <Play className="w-5 h-5 fill-black" />
+                            </button>
+                          </div>
+                        ) : (
+                          <Link href={`/artist/${topResult.item.id}`} className="bg-card hover:bg-card-hover rounded-lg p-5 block">
+                            <img src={pickImage(topResult.item.image, "high")} alt="" className="w-24 h-24 rounded-full shadow-xl mb-4 object-cover" />
+                            <div className="text-2xl font-bold line-clamp-1">{decodeHtml(topResult.item.name)}</div>
+                            <div className="mt-2"><span className="bg-white/20 px-2 py-0.5 rounded text-xs font-semibold">ARTIST</span></div>
+                          </Link>
+                        )}
+                      </section>
+                    )}
+                    {songs.length > 0 && (
+                      <section className="lg:col-span-2">
+                        <h3 className="text-xl font-bold mb-3">Songs</h3>
+                        <div>{songs.slice(0, 4).map((s, i) => <SongRow key={s.id} song={s} index={i} queue={songs} showAlbum={false} />)}</div>
+                      </section>
+                    )}
+                  </div>
                   {albums.length > 0 && (
                     <section>
                       <h2 className="text-xl font-bold mb-3">Albums</h2>
@@ -202,7 +269,7 @@ function SearchInner() {
               )}
               {tab === "songs" && (
                 <div>
-                  {songs.map((s, i) => <SongRow key={s.id} song={s} index={i} queue={songs} />)}
+                  {songs.map((s, i) => <SongRow key={`${s.id}-${i}`} song={s} index={i} queue={songs} />)}
                   {hasMore && (
                     <button onClick={loadMore} disabled={loading} className="mx-auto block mt-6 px-6 py-2 bg-card hover:bg-card-hover rounded-full text-sm font-semibold">
                       {loading ? "Loading..." : "Load more"}

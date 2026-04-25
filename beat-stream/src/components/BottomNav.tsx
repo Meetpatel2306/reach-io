@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Search, Library, Settings } from "lucide-react";
-import { usePlayer } from "@/contexts/PlayerContext";
 
 const items = [
   { href: "/", label: "Home", icon: Home },
@@ -13,9 +12,8 @@ const items = [
 
 export function BottomNav() {
   const path = usePathname();
-  const { currentSong } = usePlayer();
   return (
-    <nav className={`md:hidden fixed left-0 right-0 z-40 glass border-t border-white/10 ${currentSong ? "bottom-0" : "bottom-0"}`}>
+    <nav className="md:hidden fixed left-0 right-0 bottom-0 z-40 glass border-t border-white/10" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
       <div className="flex items-stretch">
         {items.map(({ href, label, icon: Icon }) => {
           const active = path === href || (href !== "/" && path?.startsWith(href));

@@ -6,7 +6,7 @@ import {
   ArrowLeft, Send, Check, X, Trash2, Clock, Users,
   Paperclip, Mail, ChevronDown, ChevronUp, Search,
   Filter, Calendar, BarChart3, AlertCircle, Layers,
-  ArrowUpDown, User, Hash, RefreshCw
+  ArrowUpDown, User, Hash, RefreshCw, AlertOctagon
 } from "lucide-react";
 import { loadHistory, clearHistory, deleteBatch } from "@/lib/history";
 import type { SendBatch, EmailResult } from "@/lib/history";
@@ -71,6 +71,8 @@ export default function HistoryPage() {
   const [emailSortField, setEmailSortField] = useState<EmailSortField>("email");
   const [emailSortDir, setEmailSortDir] = useState<SortDir>("asc");
   const [loaded, setLoaded] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [deleteBatchId, setDeleteBatchId] = useState<string | null>(null);
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -79,9 +81,9 @@ export default function HistoryPage() {
 
   const refresh = () => setHistory(loadHistory());
 
-  const handleClearAll = () => { clearHistory(); setHistory([]); };
+  const handleClearAll = () => { clearHistory(); setHistory([]); setShowClearConfirm(false); };
 
-  const handleDeleteBatch = (id: string) => { deleteBatch(id); refresh(); };
+  const handleDeleteBatch = (id: string) => { deleteBatch(id); refresh(); setDeleteBatchId(null); };
 
   // --- Batch filtering & sorting ---
 
@@ -239,7 +241,7 @@ export default function HistoryPage() {
           </div>
         </div>
         {history.length > 0 && (
-          <button onClick={handleClearAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-sm hover:bg-red-500/20 transition-all">
+          <button onClick={() => setShowClearConfirm(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-sm hover:bg-red-500/20 transition-all">
             <Trash2 size={14} />Clear All
           </button>
         )}
@@ -438,7 +440,7 @@ export default function HistoryPage() {
                     </div>
 
                     <div className="px-4 py-3 border-t border-slate-800/30 flex justify-end">
-                      <button onClick={() => handleDeleteBatch(batch.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-xs hover:bg-red-500/20 transition-all">
+                      <button onClick={() => setDeleteBatchId(batch.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-xs hover:bg-red-500/20 transition-all">
                         <Trash2 size={12} />Delete
                       </button>
                     </div>
@@ -536,6 +538,96 @@ export default function HistoryPage() {
           })}
         </div>
       )}
+      {/* Clear All Confirmation Popup */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}>
+          <div className="glass-card max-w-sm w-full !border-red-500/30 text-center">
+            {/* Icon */}
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center mx-auto mb-4">
+              <AlertOctagon size={32} className="text-white" />
+            </div>
+
+            <h2 className="text-xl font-bold text-white mb-2">Delete All History?</h2>
+            <p className="text-sm text-slate-400 mb-2">This will permanently remove:</p>
+
+            {/* Stats of what will be deleted */}
+            <div className="grid grid-cols-3 gap-2 mb-6">
+              <div className="bg-red-500/5 border border-red-500/15 rounded-lg py-2 px-3">
+                <p className="text-lg font-bold text-red-300">{history.length}</p>
+                <p className="text-[10px] text-slate-500 uppercase">Batches</p>
+              </div>
+              <div className="bg-orange-500/5 border border-orange-500/15 rounded-lg py-2 px-3">
+                <p className="text-lg font-bold text-orange-300">{totalSent + totalFailed}</p>
+                <p className="text-[10px] text-slate-500 uppercase">Records</p>
+              </div>
+              <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg py-2 px-3">
+                <p className="text-lg font-bold text-amber-300">{uniqueEmails}</p>
+                <p className="text-[10px] text-slate-500 uppercase">Emails</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-red-400/60 mb-6">This action cannot be undone.</p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 text-sm font-semibold hover:bg-slate-700 transition-all"
+              >
+                <X size={16} />No, Keep It
+              </button>
+              <button
+                onClick={handleClearAll}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 text-white text-sm font-semibold hover:from-red-600 hover:to-orange-600 transition-all shadow-lg shadow-red-500/20"
+              >
+                <Trash2 size={16} />Yes, Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Single Batch Confirmation */}
+      {deleteBatchId && (() => {
+        const batch = history.find((b) => b.id === deleteBatchId);
+        if (!batch) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}>
+            <div className="glass-card max-w-sm w-full !border-amber-500/30 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={26} className="text-white" />
+              </div>
+
+              <h2 className="text-lg font-bold text-white mb-2">Delete This Batch?</h2>
+
+              <div className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/30 mb-4 text-left">
+                <p className="text-xs text-slate-500 mb-1">Subject</p>
+                <p className="text-sm text-slate-200 truncate mb-2">{batch.subject}</p>
+                <div className="flex items-center gap-4 text-xs text-slate-400">
+                  <span className="flex items-center gap-1"><Calendar size={11} />{formatDate(batch.timestamp)}</span>
+                  <span className="flex items-center gap-1"><Users size={11} />{batch.totalRecipients} recipients</span>
+                  <span className="flex items-center gap-1 text-emerald-400"><Check size={11} />{batch.sent}</span>
+                  {batch.failed > 0 && <span className="flex items-center gap-1 text-red-400"><X size={11} />{batch.failed}</span>}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteBatchId(null)}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 text-sm font-semibold hover:bg-slate-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleDeleteBatch(deleteBatchId)}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold hover:from-amber-600 hover:to-orange-600 transition-all shadow-lg shadow-amber-500/20"
+                >
+                  <Trash2 size={14} />Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

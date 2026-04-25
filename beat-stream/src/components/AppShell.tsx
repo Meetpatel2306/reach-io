@@ -1,16 +1,20 @@
 "use client";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { BottomNav } from "./BottomNav";
 import { MiniPlayer } from "./MiniPlayer";
 import { FullPlayer } from "./FullPlayer";
 import { ToastViewport } from "./ToastViewport";
 import { OfflineBanner } from "./OfflineBanner";
+import { IosInstallPrompt } from "./IosInstallPrompt";
+import { CarMode } from "./CarMode";
+import { ShortcutsModal } from "./ShortcutsModal";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { usePlayer } from "@/contexts/PlayerContext";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  useKeyboardShortcuts();
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  useKeyboardShortcuts(setShowShortcuts);
   const { currentSong } = usePlayer();
   return (
     <div className="flex min-h-screen bg-bg text-white">
@@ -23,8 +27,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
       <MiniPlayer />
       <FullPlayer />
+      <CarMode />
       <BottomNav />
       <ToastViewport />
+      <IosInstallPrompt />
+      {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 }

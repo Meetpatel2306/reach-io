@@ -31,22 +31,25 @@ export class Equalizer {
     try {
       const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!Ctx) return;
-      this.ctx = new Ctx();
-      this.source = this.ctx.createMediaElementSource(audio);
+      const ctx: AudioContext = new Ctx();
+      this.ctx = ctx;
+      const source = ctx.createMediaElementSource(audio);
+      this.source = source;
       this.filters = EQ_BANDS.map((freq, i) => {
-        const f = this.ctx!.createBiquadFilter();
+        const f = ctx.createBiquadFilter();
         f.type = i === 0 ? "lowshelf" : i === EQ_BANDS.length - 1 ? "highshelf" : "peaking";
         f.frequency.value = freq;
         f.Q.value = 1;
         f.gain.value = enabled ? (gains[i] || 0) : 0;
         return f;
       });
-      this.gain = this.ctx.createGain();
-      this.gain.gain.value = normalize ? 0.85 : 1;
-      let node: AudioNode = this.source;
+      const gain = ctx.createGain();
+      this.gain = gain;
+      gain.gain.value = normalize ? 0.85 : 1;
+      let node: AudioNode = source;
       for (const f of this.filters) { node.connect(f); node = f; }
-      node.connect(this.gain);
-      this.gain.connect(this.ctx.destination);
+      node.connect(gain);
+      gain.connect(ctx.destination);
       this.attached = true;
       this.enabled = enabled;
     } catch {}

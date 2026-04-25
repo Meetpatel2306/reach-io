@@ -267,6 +267,7 @@ export default function Home() {
     icon: typeof Send;
     tip: string | null;
     type: TourType;
+    target?: string; // data-tour attribute to spotlight
     steps?: string[];
     cards?: { label: string; value: string; color: string }[];
   }
@@ -274,109 +275,70 @@ export default function Home() {
     {
       title: "Welcome to Email Blaster Pro!",
       desc: "Send bulk emails with resume attachments — perfect for job applications. Let's walk through everything.",
-      icon: Send,
-      tip: null,
-      type: "default",
+      icon: Send, tip: null, type: "default",
     },
     {
-      title: "Get Your Gmail App Password",
-      desc: "You need a special App Password (not your regular password). Here's how:",
-      icon: Key,
-      tip: "For Outlook, Yahoo & others — check the Setup Guide (book icon in header).",
-      type: "steps",
-      steps: [
-        "Go to myaccount.google.com/security",
-        "Enable 2-Step Verification",
-        "Go to myaccount.google.com/apppasswords",
-        "Create new password, name it \"Email Blaster\"",
-        "Copy the 16-character code (shown only once!)",
-      ],
+      title: "Setup Guide",
+      desc: "This book icon opens the full Setup Guide — step-by-step instructions for Gmail, Outlook, Yahoo, and custom SMTP.",
+      icon: BookOpen, tip: "Start here if you need an App Password.", type: "default", target: "guide",
     },
     {
-      title: "Configure SMTP Settings",
-      desc: "Click the gear icon (top-right corner) to open Settings.",
-      icon: Settings,
-      tip: "Gear icon turns green when connected. Eye icon shows/hides password.",
+      title: "SMTP Settings",
+      desc: "This gear icon opens your email configuration. Enter your credentials and test the connection.",
+      icon: Settings, target: "settings",
+      tip: "Turns green when connected. Amber when not configured yet.",
       type: "cards",
       cards: [
         { label: "Email", value: "you@gmail.com", color: "text-violet-300" },
-        { label: "Password", value: "paste 16-char code", color: "text-amber-300" },
-        { label: "Host", value: "smtp.gmail.com", color: "text-slate-300" },
-        { label: "Port", value: "587 / STARTTLS", color: "text-slate-300" },
+        { label: "Password", value: "16-char app password", color: "text-amber-300" },
+        { label: "Test", value: "Verify without saving", color: "text-blue-300" },
+        { label: "Save", value: "Verify + save to browser", color: "text-emerald-300" },
       ],
     },
     {
-      title: "Upload Resume",
-      desc: "Drag & drop your resume (PDF, DOC, DOCX). Gets attached to every email. Saved in browser — no re-upload needed.",
-      icon: FileText,
-      tip: "Optional — skip if you don't need attachments.",
+      title: "Navigation Steps",
+      desc: "These 4 steps guide you through the workflow. Click any step to jump directly to it.",
+      icon: ChevronRight, target: "steps",
+      tip: "Steps turn green when completed. You can go back and forth freely.",
       type: "default",
     },
     {
-      title: "Compose Email",
-      desc: "Write subject + body. Same content for all recipients. Watch the Live Preview on the right side.",
-      icon: Mail,
-      tip: "Auto-saves to browser. Your draft persists between sessions.",
+      title: "Live Preview",
+      desc: "See exactly how your email will look — subject, body, sender, and attachment — updated in real time as you type.",
+      icon: Eye, target: "preview",
+      tip: "Shows your From address, subject, body text, and attachment name.",
       type: "default",
     },
     {
-      title: "Add Recipients",
-      desc: "Multiple ways to add recipients:",
-      icon: Users,
-      tip: "You can combine all methods — they stack together.",
-      type: "steps",
-      steps: [
-        "Type emails manually (one per line)",
-        "Use format: John <john@company.com>",
-        "Upload CSV file (header + name,email rows)",
-        "Remove individuals with X, or Clear All",
-      ],
+      title: "Activity Log",
+      desc: "Real-time log of everything happening — uploads, saves, sends, errors. Watch each email being sent live.",
+      icon: Activity, target: "activity",
+      tip: "Green = success, Red = error. Timestamps included.",
+      type: "default",
     },
     {
-      title: "Review & Send",
-      desc: "Final step — check everything and send.",
-      icon: Send,
-      tip: "Always test with your own email first!",
-      type: "steps",
-      steps: [
-        "Review recipients count & attachment",
-        "Set delay: 3-10 seconds (avoids spam filters)",
-        "Hit Send — watch real-time Activity log",
-        "Results show sent/failed for each recipient",
-      ],
-    },
-    {
-      title: "Track in History",
-      desc: "Click clock icon to view all past sends with two powerful views.",
-      icon: History,
-      tip: "\"By Email\" view shows repeat contacts & per-person success rates.",
+      title: "Send History",
+      desc: "Clock icon opens the History page with powerful tracking.",
+      icon: History, target: "history",
+      tip: "\"By Email\" view shows how many times you contacted each person.",
       type: "cards",
       cards: [
         { label: "Batches", value: "Grouped by send session", color: "text-violet-300" },
         { label: "By Email", value: "Grouped by recipient", color: "text-blue-300" },
-        { label: "Search", value: "By subject, email, name", color: "text-emerald-300" },
+        { label: "Search", value: "Subject, email, name", color: "text-emerald-300" },
         { label: "Filter", value: "Success / Failed / All", color: "text-amber-300" },
       ],
     },
     {
-      title: "Header Icons Guide",
-      desc: "Quick reference for all the icons in the top-right corner:",
-      icon: HelpCircle,
-      tip: "Replay this tour anytime with the ? icon.",
-      type: "cards",
-      cards: [
-        { label: "Book", value: "Setup Guide & FAQ", color: "text-violet-300" },
-        { label: "Clock", value: "Send History", color: "text-blue-300" },
-        { label: "Gear", value: "SMTP Settings", color: "text-emerald-300" },
-        { label: "?", value: "Replay this Tour", color: "text-amber-300" },
-      ],
+      title: "Replay Tour",
+      desc: "Click this ? icon anytime to replay this tour and refresh your memory on all features.",
+      icon: HelpCircle, target: "tour-btn",
+      tip: null, type: "default",
     },
     {
       title: "You're Ready!",
-      desc: "Start by clicking the gear icon to configure SMTP. Need help? Check the Setup Guide (book icon) for detailed steps.",
-      icon: Zap,
-      tip: null,
-      type: "default",
+      desc: "Click the gear icon to configure your SMTP credentials and start sending. Need help? The book icon has the full guide.",
+      icon: Zap, tip: null, type: "default",
     },
   ];
 
@@ -577,6 +539,7 @@ export default function Home() {
           )}
           <Link
             href="/guide"
+            data-tour="guide"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
             title="Setup Guide"
           >
@@ -584,6 +547,7 @@ export default function Home() {
           </Link>
           <Link
             href="/history"
+            data-tour="history"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
             title="Send History"
           >
@@ -591,6 +555,7 @@ export default function Home() {
           </Link>
           <button
             onClick={() => setShowSettings(!showSettings)}
+            data-tour="settings"
             className={`p-2 rounded-lg border transition-all ${
               smtpConfigured
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
@@ -602,6 +567,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => { setShowTour(true); setTourStep(0); }}
+            data-tour="tour-btn"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
             title="Product Tour"
           >
@@ -708,7 +674,7 @@ export default function Home() {
       )}
 
       {/* Steps */}
-      <div className="flex items-center justify-center gap-1 mb-8">
+      <div data-tour="steps" className="flex items-center justify-center gap-1 mb-8">
         {steps.map((s, i) => {
           const Icon = s.icon;
           return (
@@ -993,7 +959,7 @@ export default function Home() {
 
         {/* Right Column */}
         <div className="space-y-6">
-          <div className="glass-card sticky top-4">
+          <div data-tour="preview" className="glass-card sticky top-4">
             <div className="flex items-center gap-2 mb-4">
               <Eye size={18} className="text-violet-400" />
               <h2 className="text-sm font-semibold text-white">Live Preview</h2>
@@ -1018,7 +984,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="glass-card">
+          <div data-tour="activity" className="glass-card">
             <div className="flex items-center gap-2 mb-3">
               <Activity size={16} className="text-violet-400" />
               <h2 className="text-sm font-semibold text-white">Activity</h2>
@@ -1038,50 +1004,104 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Product Tour Overlay */}
+      {/* Interactive Spotlight Tour */}
       {showTour && (() => {
         const step = tourSteps[tourStep];
         const Icon = step.icon;
+
+        // Find target element and get its position
+        const target = step.target ? document.querySelector(`[data-tour="${step.target}"]`) : null;
+        const rect = target?.getBoundingClientRect();
+        const hasTarget = !!(rect && rect.width > 0);
+        const pad = 8;
+
+        // Tooltip position
+        const tooltipStyle: React.CSSProperties = hasTarget ? {
+          position: "fixed",
+          top: Math.min(rect!.bottom + 16, window.innerHeight - 420),
+          left: Math.max(16, Math.min(rect!.left - 100, window.innerWidth - 440)),
+          zIndex: 52,
+        } : {
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 52,
+        };
+
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(10px)" }}>
-          <div className="glass-card max-w-lg w-full !border-violet-500/30 relative">
+        <>
+          {/* Overlay with spotlight hole */}
+          <div className="fixed inset-0 z-50" style={{ pointerEvents: "none" }}>
+            <svg className="w-full h-full" style={{ pointerEvents: "auto" }} onClick={(e) => { if ((e.target as SVGElement).tagName === "rect") { /* clicking overlay does nothing */ } }}>
+              <defs>
+                <mask id="spotlight-mask">
+                  <rect x="0" y="0" width="100%" height="100%" fill="white" />
+                  {hasTarget && (
+                    <rect
+                      x={rect!.left - pad} y={rect!.top - pad}
+                      width={rect!.width + pad * 2} height={rect!.height + pad * 2}
+                      rx="12" fill="black"
+                    />
+                  )}
+                </mask>
+              </defs>
+              <rect x="0" y="0" width="100%" height="100%" fill="rgba(0,0,0,0.82)" mask="url(#spotlight-mask)" />
+            </svg>
+
+            {/* Highlight ring around target */}
+            {hasTarget && (
+              <div className="fixed z-51 pointer-events-none rounded-xl border-2 border-violet-400 shadow-lg shadow-violet-500/30" style={{
+                top: rect!.top - pad, left: rect!.left - pad,
+                width: rect!.width + pad * 2, height: rect!.height + pad * 2,
+                animation: "pulse 2s infinite",
+              }} />
+            )}
+          </div>
+
+          {/* Tooltip card */}
+          <div style={{ ...tooltipStyle, pointerEvents: "auto" }} className="glass-card !border-violet-500/30 w-[420px] max-w-[calc(100vw-32px)]">
+            {/* Arrow pointing up to target */}
+            {hasTarget && (
+              <div className="absolute -top-2 left-8 w-4 h-4 rotate-45 bg-slate-900 border-l border-t border-violet-500/30" />
+            )}
+
             {/* Progress bar */}
-            <div className="h-1 bg-slate-800 rounded-full mb-6 overflow-hidden">
+            <div className="h-1 bg-slate-800 rounded-full mb-4 overflow-hidden">
               <div className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-300" style={{ width: `${((tourStep + 1) / tourSteps.length) * 100}%` }} />
             </div>
 
-            {/* Icon + Title row */}
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0">
-                <Icon size={22} className="text-white" />
+            {/* Icon + Title */}
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0">
+                <Icon size={20} className="text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white leading-tight">{step.title}</h2>
-                <p className="text-[10px] text-slate-600 uppercase tracking-widest">{tourStep + 1} of {tourSteps.length}</p>
+                <h2 className="text-base font-bold text-white leading-tight">{step.title}</h2>
+                <p className="text-[10px] text-slate-600 uppercase tracking-widest">{tourStep + 1} / {tourSteps.length}</p>
               </div>
             </div>
 
-            {/* Description */}
-            <p className="text-sm text-slate-400 leading-relaxed mb-4">{step.desc}</p>
+            <p className="text-sm text-slate-400 leading-relaxed mb-3">{step.desc}</p>
 
-            {/* Steps (numbered boxes) */}
+            {/* Steps */}
             {step.type === "steps" && step.steps && (
-              <div className="space-y-2 mb-4">
+              <div className="space-y-1.5 mb-3">
                 {step.steps.map((s, i) => (
-                  <div key={i} className="flex items-start gap-3 bg-slate-800/40 rounded-lg px-3 py-2.5 border border-slate-700/30">
-                    <span className="w-5 h-5 rounded-md bg-violet-500/20 text-violet-300 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+                  <div key={i} className="flex items-start gap-2.5 bg-slate-800/40 rounded-lg px-3 py-2 border border-slate-700/30">
+                    <span className="w-5 h-5 rounded-md bg-violet-500/20 text-violet-300 text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                     <p className="text-xs text-slate-300 leading-relaxed">{s}</p>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Cards (info boxes) */}
+            {/* Cards */}
             {step.type === "cards" && step.cards && (
-              <div className="grid grid-cols-2 gap-2 mb-4">
+              <div className="grid grid-cols-2 gap-2 mb-3">
                 {step.cards.map((c, i) => (
-                  <div key={i} className="bg-slate-800/40 rounded-lg px-3 py-2.5 border border-slate-700/30">
-                    <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">{c.label}</p>
+                  <div key={i} className="bg-slate-800/40 rounded-lg px-3 py-2 border border-slate-700/30">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">{c.label}</p>
                     <p className={`text-xs font-medium ${c.color}`}>{c.value}</p>
                   </div>
                 ))}
@@ -1090,38 +1110,37 @@ export default function Home() {
 
             {/* Tip */}
             {step.tip && (
-              <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2 mb-5 flex items-start gap-2">
-                <Zap size={12} className="text-amber-400 mt-0.5 shrink-0" />
+              <div className="bg-amber-500/5 border border-amber-500/15 rounded-lg px-3 py-2 mb-4 flex items-start gap-2">
+                <Zap size={11} className="text-amber-400 mt-0.5 shrink-0" />
                 <p className="text-[11px] text-amber-300/80 leading-relaxed">{step.tip}</p>
               </div>
             )}
 
-            {/* Navigation */}
-            <div className="flex gap-3">
+            {/* Nav */}
+            <div className="flex gap-2">
               {tourStep > 0 && (
-                <button onClick={() => setTourStep(tourStep - 1)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-sm flex-1 justify-center">
-                  <ChevronLeft size={16} />Back
+                <button onClick={() => setTourStep(tourStep - 1)} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-xs flex-1 justify-center">
+                  <ChevronLeft size={14} />Back
                 </button>
               )}
               {tourStep < tourSteps.length - 1 ? (
-                <button onClick={() => setTourStep(tourStep + 1)} className="btn-primary flex items-center justify-center gap-1.5 flex-1">
-                  Next<ChevronRight size={16} />
+                <button onClick={() => setTourStep(tourStep + 1)} className="btn-primary flex items-center justify-center gap-1 flex-1 !py-2 !text-sm">
+                  Next<ChevronRight size={14} />
                 </button>
               ) : (
-                <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); setShowSettings(true); }} className="btn-primary flex items-center justify-center gap-1.5 flex-1">
-                  <Zap size={16} />Configure SMTP Now
+                <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); setShowSettings(true); }} className="btn-primary flex items-center justify-center gap-1 flex-1 !py-2 !text-sm">
+                  <Zap size={14} />Configure SMTP
                 </button>
               )}
             </div>
 
-            {/* Skip */}
             {tourStep < tourSteps.length - 1 && (
-              <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="text-xs text-slate-600 hover:text-slate-400 mt-3 block mx-auto transition-colors">
+              <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="text-[10px] text-slate-600 hover:text-slate-400 mt-2 block mx-auto transition-colors">
                 Skip tour
               </button>
             )}
           </div>
-        </div>
+        </>
         );
       })()}
     </div>
