@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
   FileText, Upload, Mail, Send, Users, Check, X, Trash2,
   Save, ChevronRight, ChevronLeft, Download, Activity,
-  Clock, Paperclip, Eye, Settings, Loader2, History
+  Clock, Paperclip, Eye, Settings, Loader2, History,
+  Zap, HelpCircle, Shield
 } from "lucide-react";
 import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
@@ -37,19 +38,8 @@ interface SavedState {
   recipients: Recipient[];
 }
 
-const STATIC_SUBJECT = "Application for Python Developer";
-const STATIC_BODY = `Hiring Team,
-
-I'm reaching out regarding Python Developer opportunities. I currently work at NETAI, where I contribute to backend and real-time monitoring systems using FastAPI, Kafka, Prometheus, Redis, MySQL, and ClickHouse. My experience includes building role-based and site-based access control, developing alert-processing flows from VM alerts through Alertmanager and Kafka, and creating topology views and dynamic dashboards for system metrics.
-I have also built projects such as a PDF Chatbot using FAISS and Ollama Mistral, along with a Django-based carpooling platform. I am looking for an opportunity where I can contribute to backend development, APIs, and distributed systems.
-
-My resume is attached for your review. I would appreciate the opportunity to be considered for any suitable Python Developer openings.
-
-Regards,
-Meet Patel
-Ahmedabad, Gujarat, India
-+91 8799474373
-meetpatel4384@gmail.com`;
+const STATIC_SUBJECT = "";
+const STATIC_BODY = "";
 
 const STORAGE_KEY = "email-blaster-state";
 const SMTP_STORAGE_KEY = "email-blaster-smtp";
@@ -112,7 +102,7 @@ export default function Home() {
 
   const [subject, setSubject] = useState(STATIC_SUBJECT);
   const [body, setBody] = useState(STATIC_BODY);
-  const [emailSaved, setEmailSaved] = useState(true);
+  const [emailSaved, setEmailSaved] = useState(false);
 
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [manualEmails, setManualEmails] = useState("");
@@ -126,9 +116,14 @@ export default function Home() {
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
   const [smtpMsg, setSmtpMsg] = useState("");
   const [minDelay, setMinDelay] = useState(2);
   const [maxDelay, setMaxDelay] = useState(5);
+
+  // Tour
+  const [showTour, setShowTour] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
 
   const [sending, setSending] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -198,7 +193,7 @@ export default function Home() {
       setSmtpUser(saved.smtpUser);
       setSmtpHost(saved.smtpHost || "smtp.gmail.com");
       setSmtpPort(saved.smtpPort || "587");
-      setSmtpPass(saved.smtpPass);
+      // Don't populate password field — keep it hidden, but mark as configured
       setSmtpSecurity(saved.smtpSecurity || "starttls");
       setSmtpConfigured(true);
     } else {
@@ -210,10 +205,8 @@ export default function Home() {
           setSmtpPort(cfg.smtpPort || "587");
           setSmtpSecurity(cfg.smtpSecurity || "starttls");
           setSmtpConfigured(true);
-        } else {
-          // No config found anywhere — open settings
-          setShowSettings(true);
         }
+        // Don't auto-open settings — let the tour guide them
       }).catch(() => {});
     }
   }, []);
@@ -248,6 +241,22 @@ export default function Home() {
     setSavingSmtp(false);
   };
 
+  const testSmtpConnection = async () => {
+    setTestingSmtp(true);
+    setSmtpMsg("");
+    try {
+      const res = await fetch("/api/smtp-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ smtpHost, smtpPort, smtpUser, smtpPass, smtpSecurity }),
+      });
+      const data = await res.json();
+      if (data.error) { setSmtpMsg(data.error); }
+      else { setSmtpMsg("Connection successful! Credentials are valid."); addLog("SMTP test passed"); }
+    } catch { setSmtpMsg("Failed to test connection"); }
+    setTestingSmtp(false);
+  };
+
   const deleteSmtpConfig = () => {
     clearSmtp();
     setSmtpConfigured(false);
@@ -259,6 +268,24 @@ export default function Home() {
     setSmtpMsg("Config removed");
     addLog("SMTP config removed");
   };
+
+  // Tour steps
+  const tourSteps = [
+    { title: "Welcome to Email Blaster Pro!", desc: "A powerful tool to send bulk emails with resume attachments. Let's take a quick tour of all features.", icon: Send },
+    { title: "SMTP Settings", desc: "First, configure your email credentials. Click the gear icon in the header. Use 'Test Connection' to verify without saving, or 'Save Config' to save & verify.", icon: Settings },
+    { title: "Step 1: Upload Resume", desc: "Upload your resume (PDF, DOC, DOCX). It gets attached to every email you send. Saved in your browser for next time.", icon: FileText },
+    { title: "Step 2: Compose Email", desc: "Write your email subject and body. This same content goes to all recipients. Everything auto-saves to your browser.", icon: Mail },
+    { title: "Step 3: Add Recipients", desc: "Add recipients manually (one per line) or upload a CSV file. Supports 'Name <email>' format and bulk CSV imports.", icon: Users },
+    { title: "Step 4: Send", desc: "Review your settings, adjust delay between emails (to avoid spam filters), and hit Send. Watch real-time progress in the Activity log.", icon: Send },
+    { title: "Send History", desc: "Click the clock icon to view all past sends. Group by batch or by email, search, filter, sort — see who got your email and when.", icon: History },
+    { title: "You're all set!", desc: "Start by configuring your SMTP settings. For Gmail, use an App Password from myaccount.google.com/apppasswords. Happy emailing!", icon: Zap },
+  ];
+
+  // Show tour on first visit
+  useEffect(() => {
+    const tourSeen = localStorage.getItem("email-blaster-tour-seen");
+    if (!tourSeen) setShowTour(true);
+  }, []);
 
   const handleInstall = async () => {
     if (!installPrompt) return;
@@ -462,6 +489,13 @@ export default function Home() {
           >
             <Settings size={18} />
           </button>
+          <button
+            onClick={() => { setShowTour(true); setTourStep(0); }}
+            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
+            title="Product Tour"
+          >
+            <HelpCircle size={18} />
+          </button>
           {!isInstalled && installPrompt && (
             <button onClick={handleInstall} className="btn-primary text-sm flex items-center gap-1.5"><Download size={14} />Install</button>
           )}
@@ -526,10 +560,18 @@ export default function Home() {
           </div>
 
           {smtpMsg && (
-            <p className={`text-sm mt-3 ${smtpMsg.includes("Verified") || smtpMsg.includes("Saved") ? "text-emerald-400" : smtpMsg.includes("removed") ? "text-amber-400" : "text-red-400"}`}>{smtpMsg}</p>
+            <p className={`text-sm mt-3 ${smtpMsg.includes("successful") || smtpMsg.includes("Verified") || smtpMsg.includes("Saved") ? "text-emerald-400" : smtpMsg.includes("removed") ? "text-amber-400" : "text-red-400"}`}>{smtpMsg}</p>
           )}
 
-          <div className="flex gap-3 mt-4">
+          <div className="flex gap-3 mt-4 flex-wrap">
+            <button
+              onClick={testSmtpConnection}
+              disabled={testingSmtp || !smtpUser || !smtpPass}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-sm hover:bg-blue-500/20 transition-all font-medium"
+            >
+              {testingSmtp ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+              {testingSmtp ? "Testing..." : "Test Connection"}
+            </button>
             <button
               onClick={saveSmtpConfig}
               disabled={savingSmtp || !smtpUser || !smtpPass}
@@ -879,6 +921,59 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Product Tour Overlay */}
+      {showTour && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
+          <div className="glass-card max-w-md w-full !border-violet-500/30 relative">
+            {/* Progress dots */}
+            <div className="flex items-center justify-center gap-1.5 mb-6">
+              {tourSteps.map((_, i) => (
+                <div key={i} className={`h-1.5 rounded-full transition-all ${i === tourStep ? "w-6 bg-violet-400" : i < tourStep ? "w-1.5 bg-violet-400/50" : "w-1.5 bg-slate-700"}`} />
+              ))}
+            </div>
+
+            {/* Icon */}
+            {(() => { const Icon = tourSteps[tourStep].icon; return (
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mx-auto mb-4">
+                <Icon size={28} className="text-white" />
+              </div>
+            ); })()}
+
+            {/* Content */}
+            <h2 className="text-xl font-bold text-white text-center mb-2">{tourSteps[tourStep].title}</h2>
+            <p className="text-sm text-slate-400 text-center leading-relaxed mb-8">{tourSteps[tourStep].desc}</p>
+
+            {/* Step counter */}
+            <p className="text-[10px] text-slate-600 text-center mb-4 uppercase tracking-widest">{tourStep + 1} of {tourSteps.length}</p>
+
+            {/* Navigation */}
+            <div className="flex gap-3">
+              {tourStep > 0 && (
+                <button onClick={() => setTourStep(tourStep - 1)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-sm flex-1">
+                  <ChevronLeft size={16} />Back
+                </button>
+              )}
+              {tourStep < tourSteps.length - 1 ? (
+                <button onClick={() => setTourStep(tourStep + 1)} className="btn-primary flex items-center justify-center gap-1.5 flex-1">
+                  Next<ChevronRight size={16} />
+                </button>
+              ) : (
+                <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="btn-primary flex items-center justify-center gap-1.5 flex-1">
+                  <Zap size={16} />Get Started
+                </button>
+              )}
+            </div>
+
+            {/* Skip */}
+            {tourStep < tourSteps.length - 1 && (
+              <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="text-xs text-slate-600 hover:text-slate-400 mt-4 block mx-auto transition-colors">
+                Skip tour
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

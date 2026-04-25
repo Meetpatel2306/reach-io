@@ -26,7 +26,6 @@ export default function SettingsPage() {
   const exportTaskFile = useStore((s) => s.exportTaskFile);
   const importTaskFile = useStore((s) => s.importTaskFile);
   const clearAllData = useStore((s) => s.clearAllData);
-  const addTask = useStore((s) => s.addTask);
   const tasks = useStore((s) => s.tasks);
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
@@ -416,34 +415,6 @@ export default function SettingsPage() {
           className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 transition-all text-sm font-medium"
         >
           <Trash2 size={16} /> Clear All Data & Cache
-        </button>
-        <button
-          onClick={() => {
-            const now = new Date();
-            for (let i = 1; i <= 5; i++) {
-              const start = new Date(now.getTime() + i * 60000);
-              const end = new Date(start.getTime() + 60000);
-              addTask({
-                title: `Test Task ${i} (${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })})`,
-                description: `Auto-generated test task #${i}`,
-                priority: (['low', 'medium', 'high', 'urgent'] as const)[i % 4],
-                status: 'pending',
-                categoryId: null,
-                tags: ['test'],
-                recurrence: 'once',
-                scheduledAt: start.toISOString(),
-                endAt: end.toISOString(),
-                notifyOnEnd: true,
-                completedAt: null,
-                pomodorosEstimated: 1,
-                subtasks: [],
-              });
-            }
-            addToast(`Created 5 test tasks (1 per minute starting ${new Date(now.getTime() + 60000).toLocaleTimeString()})`, 'success');
-          }}
-          className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border)] text-[var(--text-secondary)] hover:bg-white/5 transition-all text-sm font-medium"
-        >
-          Generate 5 Test Tasks (1/min)
         </button>
       </Section>
 
