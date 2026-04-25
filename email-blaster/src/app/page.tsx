@@ -373,6 +373,11 @@ export default function Home() {
 
   const handleSend = async () => {
     if (!recipients.length || !subject || !body) return;
+    if (!smtpConfigured) {
+      addLog("ERROR: SMTP not configured. Open Settings first.");
+      setShowSettings(true);
+      return;
+    }
     setSending(true); setResults([]);
     addLog(`Sending to ${recipients.length} recipients...`);
     const startTime = Date.now();
@@ -385,9 +390,9 @@ export default function Home() {
     if (resumeFilename) fd.append("resumeFilename", resumeFilename);
     if (resumeFile) fd.append("resumeFile", resumeFile);
 
-    // Send SMTP creds from localStorage (works on Vercel where env may not be set)
+    // Send SMTP creds from localStorage
     const smtp = loadSmtp();
-    if (smtp) {
+    if (smtp && smtp.smtpUser && smtp.smtpPass) {
       fd.append("smtpHost", smtp.smtpHost);
       fd.append("smtpPort", smtp.smtpPort);
       fd.append("smtpUser", smtp.smtpUser);
@@ -857,8 +862,8 @@ export default function Home() {
                 <button onClick={() => setCurrentStep(3)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-sm">
                   <ChevronLeft size={16} />Back
                 </button>
-                <button onClick={handleSend} disabled={sending || !recipients.length} className="btn-primary flex-1 text-lg py-3 flex items-center justify-center gap-2">
-                  <Send size={18} />{sending ? "Sending..." : `Send to ${recipients.length}`}
+                <button onClick={handleSend} disabled={sending || !recipients.length || !smtpConfigured} className="btn-primary flex-1 text-lg py-3 flex items-center justify-center gap-2">
+                  <Send size={18} />{sending ? "Sending..." : !smtpConfigured ? "Configure SMTP First" : `Send to ${recipients.length}`}
                 </button>
               </div>
 
