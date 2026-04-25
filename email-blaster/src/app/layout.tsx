@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "Email Blaster Pro",
   description: "Send bulk emails with resume attachments",
   manifest: "/manifest.json",
-  icons: { apple: "/icon-192.png" },
+  icons: { apple: "/icon-192.svg" },
 };
 
 export const viewport: Viewport = {
@@ -23,7 +23,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js');
+                  navigator.serviceWorker.register('/sw.js').then((reg) => {
+                    // Check for updates every 60 seconds
+                    setInterval(() => reg.update(), 60000);
+
+                    reg.addEventListener('updatefound', () => {
+                      const newWorker = reg.installing;
+                      if (!newWorker) return;
+                      newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+                          // New version available — reload to get latest
+                          window.location.reload();
+                        }
+                      });
+                    });
+                  });
+
+                  // When a new SW takes over, reload
+                  navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    window.location.reload();
+                  });
                 });
               }
             `,

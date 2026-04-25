@@ -3,10 +3,13 @@
   "short_name": "EmailBlaster",
   "description": "Send bulk emails with resume attachments",
   "start_url": "/",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "orientation": "any",
+  "categories": ["productivity", "utilities"],
   "icons": [
     {
       "src": "/icon-192.svg",

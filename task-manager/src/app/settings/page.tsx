@@ -4,7 +4,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Sun, Moon, Volume2, Download, Upload, Copy, ExternalLink,
-  Trash2, Bell, Share2, HardDrive, Palette, Shield, Info, Send,
+  Trash2, Bell, Share2, HardDrive, Palette, Shield, Info, Send, Compass,
 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import { useTheme } from '@/hooks/useTheme';
@@ -14,6 +14,7 @@ import { isAppInstalled } from '@/components/InstallPrompt';
 import AppLogo from '@/components/AppLogo';
 import { downloadFile, readFileAsText, cn } from '@/lib/utils';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import ProductTour from '@/components/ProductTour';
 import { TASK_FILE_EXTENSION, APP_NAME } from '@/lib/constants';
 import { COLOR_THEMES, BG_EFFECTS } from '@/lib/themes';
 import { Priority, Recurrence } from '@/lib/types';
@@ -31,6 +32,7 @@ export default function SettingsPage() {
   const { addToast } = useToast();
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const taskFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -150,6 +152,27 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-[var(--text-primary)]">Settings</h1>
+
+      {/* Product Tour launcher */}
+      <motion.button
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
+        onClick={() => setShowTour(true)}
+        className="w-full glass-card p-5 flex items-center justify-between text-left hover:border-primary-500/40 transition-all"
+      >
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl" style={{ background: 'var(--accent-gradient)' }}>
+            <Compass size={20} className="text-white" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-sm text-[var(--text-primary)]">Take Product Tour</h3>
+            <p className="text-xs text-[var(--text-muted)]">60-second walkthrough of every feature · uses sample data, never modifies your tasks</p>
+          </div>
+        </div>
+        <ExternalLink size={16} className="text-[var(--text-muted)]" />
+      </motion.button>
 
       {/* Appearance */}
       <Section title="Appearance" icon={Palette}>
@@ -490,6 +513,8 @@ export default function SettingsPage() {
         confirmText="Clear Everything & Restart"
         danger
       />
+
+      <ProductTour open={showTour} onClose={() => setShowTour(false)} />
     </div>
   );
 }
