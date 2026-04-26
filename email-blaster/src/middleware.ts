@@ -17,6 +17,7 @@ const PUBLIC_PATHS = [
   "/api/auth/google/refresh",
   "/api/config", // public config (no secrets)
   "/api/upload-resume", // optional: could require auth
+  "/api/system-status", // public — shows config presence (no values)
 ];
 
 export function middleware(req: NextRequest) {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, Send, ChevronRight, Check } from "lucide-react";
+import { Mail, Lock, User as UserIcon, Eye, EyeOff, Loader2, Send, ChevronRight, Check, AlertTriangle } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -14,6 +14,13 @@ export default function RegisterPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [storageWarning, setStorageWarning] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/system-status").then((r) => r.json()).then((s) => {
+      if (s.isVercel && !s.kv) setStorageWarning(true);
+    }).catch(() => {});
+  }, []);
 
   const passwordChecks = [
     { label: "At least 6 characters", pass: password.length >= 6 },
@@ -57,6 +64,16 @@ export default function RegisterPage() {
           <h1 className="text-2xl font-bold text-white">Create Account</h1>
           <p className="text-sm text-slate-400 mt-1">Get started with Email Blaster Pro</p>
         </div>
+
+        {storageWarning && (
+          <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-3">
+            <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs font-semibold text-amber-300">Storage not configured — your account may not persist</p>
+              <p className="text-[11px] text-slate-400 mt-1">Enable Vercel KV in dashboard → Storage tab → Create KV Database → Connect to Project. Then redeploy.</p>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="glass-card !border-emerald-500/20 space-y-4">
           <div>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff, Loader2, Send, ChevronRight, Clock, Infinity as InfinityIcon } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Loader2, Send, ChevronRight, Clock, Infinity as InfinityIcon, AlertTriangle } from "lucide-react";
 
 const SESSION_PRESETS = [
   { label: "1 hour", ms: 60 * 60 * 1000 },
@@ -24,6 +24,13 @@ export default function LoginPage() {
   const [customAmount, setCustomAmount] = useState(24);
   const [customUnit, setCustomUnit] = useState<"hours" | "days" | "weeks">("hours");
   const [useCustom, setUseCustom] = useState(false);
+  const [storageWarning, setStorageWarning] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/system-status").then((r) => r.json()).then((s) => {
+      if (s.isVercel && !s.kv) setStorageWarning(true);
+    }).catch(() => {});
+  }, []);
 
   const computeMs = () => {
     if (!useCustom) return sessionMs;
@@ -64,6 +71,16 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
           <p className="text-sm text-slate-400 mt-1">Sign in to Email Blaster Pro</p>
         </div>
+
+        {storageWarning && (
+          <div className="mb-4 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-3">
+            <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs font-semibold text-amber-300">Storage not configured</p>
+              <p className="text-[11px] text-slate-400 mt-1">Vercel KV is not enabled. Accounts may not persist between sessions. Admin: enable KV in Vercel dashboard → Storage tab.</p>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="glass-card !border-violet-500/20 space-y-4">
           <div>

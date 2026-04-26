@@ -51,6 +51,7 @@ function SearchInner() {
   const [lyricMatches, setLyricMatches] = useState<LyricMatch[]>([]);
   // Subset of `songs` that smartSearch surfaced via LRCLIB lyric matching
   const [lyricFoundIds, setLyricFoundIds] = useState<string[]>([]);
+  const [didYouMean, setDidYouMean] = useState<{ name: string; query: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -66,6 +67,7 @@ function SearchInner() {
     if (!debounced.trim()) {
       setSongs([]); setAlbums([]); setArtists([]); setPlaylists([]); setHasMore(false); setError(null);
       setLyricFoundIds([]);
+      setDidYouMean(null);
       return;
     }
     let cancelled = false;
@@ -102,12 +104,13 @@ function SearchInner() {
       setHasMore(bundle.songs.length >= 30);
       setLoading(false);
 
-      // 2) ENRICH phase — fires lyrics/album-expansion/YT in background
-      // and updates the songs list as each source lands.
+      // 2) ENRICH phase — fires lyrics/album-expansion/YT/typo-fuzzy/artist
+      // discography in background and updates the songs list as each source lands.
       enrichSearch(debounced, bundle, (next) => {
         if (cancelled) return;
         setSongs(next.songs);
         setLyricFoundIds(next.lyricFound || []);
+        if (next.didYouMean) setDidYouMean(next.didYouMean);
       });
     }).catch(() => {
       if (cancelled) return;
@@ -259,6 +262,13 @@ function SearchInner() {
           {error && (
             <div className="bg-red-500/10 border border-red-500/30 text-red-300 rounded-lg p-4 mb-6 text-sm">
               {error}
+            </div>
+          )}
+          {didYouMean && didYouMean.query.toLowerCase() !== query.toLowerCase() && (
+            <div className="bg-accent/10 border border-accent/30 rounded-lg p-3 mb-4 text-sm flex items-center gap-3">
+              <span className="text-secondary">Did you mean</span>
+              <button onClick={() => submit(didYouMean.query)} className="font-bold text-accent hover:underline">{didYouMean.name}</button>
+              <span className="text-secondary">?</span>
             </div>
           )}
           {!error && !loading && songs.length === 0 && albums.length === 0 && artists.length === 0 && playlists.length === 0 && (

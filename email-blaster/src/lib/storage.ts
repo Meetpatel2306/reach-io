@@ -5,7 +5,11 @@ import fs from "fs/promises";
 import path from "path";
 
 const NS = "eb:";
-const LOCAL_FILE = path.join(process.cwd(), ".local-storage.json");
+// On Vercel: /tmp is the only writable directory (ephemeral).
+// Locally: project root.
+const LOCAL_FILE = process.env.VERCEL
+  ? path.join("/tmp", "eb-storage.json")
+  : path.join(process.cwd(), ".local-storage.json");
 
 interface KvLike {
   get<T = unknown>(key: string): Promise<T | null>;

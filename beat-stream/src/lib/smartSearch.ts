@@ -18,6 +18,7 @@ import { rankSongs } from "./rank";
 import { cached, peek, TTL } from "./cache";
 import { ytSearchSongs } from "./youtubeMusic";
 import { searchByLyric } from "./lyricSearch";
+import { fuzzyVariants, editDistance } from "./fuzzy";
 
 export interface SearchBundle {
   songs: Song[];
@@ -26,6 +27,8 @@ export interface SearchBundle {
   playlists: Playlist[];
   topQuery: { id: string; title: string; type: string }[];
   lyricFound: string[];
+  /** Suggestion when fuzzy artist match differs from the user's query. */
+  didYouMean?: { name: string; query: string };
 }
 
 function variants(query: string): string[] {
@@ -101,6 +104,33 @@ export async function enrichSearch(
     });
   });
 
+  // 1b) Fuzzy / typo variants — only when initial results are thin (<=8 songs)
+  // because fuzzying a precise query just adds noise. "ed shreen" → "ed sheeran"
+  // is exactly the case this catches.
+  if (bundle.songs.length <= 8) {
+    const fz = fuzzyVariants(query, 4);
+    fz.forEach((v) => {
+      safeSearchSongs(v).then((extra) => {
+        if (!extra.length) return;
+        const merged = mergeSongs(bundle.songs, extra);
+        bundle = { ...bundle, songs: rankSongs(merged, query) };
+        onUpdate(bundle);
+      });
+    });
+  }
+
+  // 1c) Artist discography expansion — when search returns matching artists,
+  // pull their full song list. Massive win for queries like "ed sheeran" where
+  // /api/search/songs returns ~5 hits but /api/artists/{id}/songs returns 100+.
+  expandTopArtists(bundle.artists, query).then(({ songs, didYouMean }) => {
+    if (didYouMean && !bundle.didYouMean) bundle = { ...bundle, didYouMean };
+    if (songs.length) {
+      const merged = mergeSongs(bundle.songs, songs);
+      bundle = { ...bundle, songs: rankSongs(merged, query) };
+    }
+    onUpdate(bundle);
+  });
+
   // 2) Global topQuery — Saavn's canonical match
   api.searchAll(query).then((g) => {
     if (!g) return;
@@ -134,7 +164,10 @@ export async function enrichSearch(
     onUpdate(bundle);
   });
 
-  // 5) YouTube fallback — last because it's the slowest
+  // 5) YouTube fallback — usually catalog filler (Western artists, K-pop,
+  // anime). When Saavn's initial results are sparse (<5), we WAIT for YT
+  // and ranknew matches inline rather than just appending — so for queries
+  // like "ed sheeran" the YT hits float to the top of the list.
   safeYt(query).then((yt) => {
     if (!yt.length) return;
     const haveKeys = new Set(
@@ -142,8 +175,15 @@ export async function enrichSearch(
     );
     const ytFiltered = yt.filter((y) => !haveKeys.has(`${normKey(y.name)}::${normKey(y.artists?.primary?.[0]?.name)}`));
     if (!ytFiltered.length) return;
-    const ranked = rankSongs(ytFiltered, query);
-    bundle = { ...bundle, songs: [...bundle.songs, ...ranked] };
+    const sparse = bundle.songs.length < 5;
+    if (sparse) {
+      // Inter-rank: mix YT hits into the main list so they get fair placement
+      const merged = mergeSongs(bundle.songs, ytFiltered);
+      bundle = { ...bundle, songs: rankSongs(merged, query) };
+    } else {
+      const ranked = rankSongs(ytFiltered, query);
+      bundle = { ...bundle, songs: [...bundle.songs, ...ranked] };
+    }
     onUpdate(bundle);
   });
 }
@@ -199,4 +239,46 @@ async function songsFromLyricMatches(q: string): Promise<{ songs: Song[]; ids: s
 export function peekSearch(query: string): SearchBundle | null {
   const fast = peek<SearchBundle>(`smart-fast:${query.toLowerCase()}`);
   return fast || null;
+}
+
+/**
+ * Pull full discographies of the top 1-2 matching artists. This is the magic
+ * that makes "ed sheeran" surface dozens of his songs even when the song
+ * search itself returns ~5 hits — the artist endpoint has way more coverage.
+ *
+ * Also detects "did you mean": if the best matching artist's name is far
+ * from the user's query (Levenshtein > 1) but still close enough to be
+ * the obvious intended target, surface a suggestion.
+ */
+async function expandTopArtists(
+  artists: Artist[],
+  query: string,
+): Promise<{ songs: Song[]; didYouMean?: { name: string; query: string } }> {
+  if (!artists.length) return { songs: [] };
+
+  // Pick the top 2 artists to expand. Score each by edit distance to the query
+  // so close fuzzy matches (Ed Sheeran for "ed shreen") are preferred.
+  const scored = artists
+    .map((a) => ({ artist: a, dist: editDistance((a.name || "").toLowerCase(), query.toLowerCase(), 6) }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 2);
+
+  // Did-you-mean detection: top match is fuzzy-close but not exact
+  let didYouMean: { name: string; query: string } | undefined;
+  const top = scored[0];
+  if (top && top.dist >= 2 && top.dist <= 4 && top.artist.name.toLowerCase() !== query.toLowerCase()) {
+    didYouMean = { name: top.artist.name, query: top.artist.name };
+  }
+
+  const lists = await Promise.all(
+    scored.map(({ artist }) =>
+      cached(`artist-songs:${artist.id}:0`, TTL.artist, () => api.getArtistSongs(artist.id, 0))
+        .then((r) => r.songs || [])
+        .catch(() => [] as Song[])
+    )
+  );
+  const songs: Song[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) for (const s of list) if (!seen.has(s.id)) { seen.add(s.id); songs.push(s); }
+  return { songs, didYouMean };
 }
