@@ -9,6 +9,7 @@ import { usePlayer } from "@/contexts/PlayerContext";
 import { songCache, downloads, counts } from "@/lib/storage";
 import { audioCache } from "@/lib/audioCache";
 import { api } from "@/lib/api";
+import { cached, TTL } from "@/lib/cache";
 import type { Album, Artist, Song } from "@/lib/types";
 import { decodeHtml, pickImage, shuffle as shuf } from "@/lib/utils";
 import { SongRow } from "@/components/SongRow";
@@ -50,12 +51,14 @@ function LibraryInner() {
   const [savedAlbumsData, setSavedAlbumsData] = useState<Album[]>([]);
   const [followedData, setFollowedData] = useState<Artist[]>([]);
   useEffect(() => {
-    Promise.all(savedAlbumIds.map((id) => api.getAlbum(id).catch(() => null)))
-      .then((arr) => setSavedAlbumsData(arr.filter(Boolean) as Album[]));
+    Promise.all(savedAlbumIds.map((id) =>
+      cached(`album:${id}`, TTL.album, () => api.getAlbum(id)).catch(() => null)
+    )).then((arr) => setSavedAlbumsData(arr.filter(Boolean) as Album[]));
   }, [savedAlbumIds]);
   useEffect(() => {
-    Promise.all(followedArtistIds.map((id) => api.getArtist(id).catch(() => null)))
-      .then((arr) => setFollowedData(arr.filter(Boolean) as Artist[]));
+    Promise.all(followedArtistIds.map((id) =>
+      cached(`artist-summary:${id}`, TTL.artist, () => api.getArtist(id)).catch(() => null)
+    )).then((arr) => setFollowedData(arr.filter(Boolean) as Artist[]));
   }, [followedArtistIds]);
 
   function handleCreate() {

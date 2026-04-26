@@ -7,8 +7,10 @@ import { useToast } from "@/contexts/ToastContext";
 import { useLibrary } from "@/contexts/LibraryContext";
 import { history, searches, store, STORAGE_KEYS, downloads, songCache, recent, counts, listenTime } from "@/lib/storage";
 import { audioCache } from "@/lib/audioCache";
+import { cacheBytes, clearAllCache } from "@/lib/cache";
 import type { AccentColor, Quality, Theme } from "@/lib/types";
 import { EQ_BANDS, EQ_PRESETS } from "@/lib/equalizer";
+import { API_HOSTS, getApiHost, setApiHost } from "@/lib/api";
 import { ShortcutsModal } from "@/components/ShortcutsModal";
 
 const AVATARS = ["🎵","🎧","🎸","🎹","🎤","🎷","🥁","🎻","🎺","🪕","🎼","🎶","🦊","🐱","🐶","🦁"];
@@ -18,14 +20,18 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { likedIds, blockedSongIds, blockedArtistIds, toggleBlockSong, toggleBlockArtist } = useLibrary();
   const [audioSize, setAudioSize] = useState(0);
+  const [apiCacheSize, setApiCacheSize] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [apiHost, setApiHostState] = useState<string>(API_HOSTS[0]);
   const [stats, setStats] = useState({ totalPlays: 0, totalSec: 0, topArtist: "—", topSong: "—", topLang: "—" });
 
   useEffect(() => {
     audioCache.size().then(setAudioSize);
+    setApiCacheSize(cacheBytes());
     if (typeof window !== "undefined") {
       setInstalled((window.navigator as any).standalone === true || window.matchMedia("(display-mode: standalone)").matches);
+      setApiHostState(getApiHost());
       const cmap = counts.all();
       const cache = songCache.all();
       const totalPlays = Object.values(cmap).reduce((s, n) => s + n, 0);
@@ -248,6 +254,9 @@ export default function SettingsPage() {
         <Row label="Downloaded songs" hint={bytes(usedBytes)}>
           <button onClick={clearCache} className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded">Clear</button>
         </Row>
+        <Row label="API response cache" hint={`${bytes(apiCacheSize)} — instant repeat loads`}>
+          <button onClick={() => { clearAllCache(); setApiCacheSize(0); toast("API cache cleared", "success"); }} className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded">Clear</button>
+        </Row>
         <Row label="Search History">
           <button onClick={() => { searches.clear(); toast("Search history cleared", "success"); }} className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded">Clear</button>
         </Row>
@@ -292,7 +301,15 @@ export default function SettingsPage() {
 
       <Section title="About">
         <Row label="Version"><span className="text-secondary text-sm">1.0.0</span></Row>
-        <Row label="Data Source"><span className="text-secondary text-sm">JioSaavn (saavn.dev)</span></Row>
+        <Row label="API Mirror" hint="Switch if your network blocks the default">
+          <select
+            value={apiHost}
+            onChange={(e) => { setApiHost(e.target.value); setApiHostState(e.target.value); toast(`API switched to ${new URL(e.target.value).hostname}`, "success"); }}
+            className="bg-bg border border-white/10 rounded px-3 py-1.5 text-sm max-w-[220px]"
+          >
+            {API_HOSTS.map((h) => <option key={h} value={h}>{new URL(h).hostname}</option>)}
+          </select>
+        </Row>
         <Row label="Install App">
           {installed ? <span className="text-accent text-sm flex items-center gap-1"><Smartphone className="w-4 h-4" /> ✓ Installed</span>
             : <button onClick={handleInstall} className="text-sm bg-accent text-black font-semibold px-4 py-1.5 rounded-full flex items-center gap-1"><Download className="w-4 h-4" /> Install</button>}

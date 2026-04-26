@@ -6,6 +6,8 @@ import { pickDownloadUrl, pickImage, artistsName } from "@/lib/utils";
 import { history, recent, counts, songCache, store, STORAGE_KEYS, blockedSongs, blockedArtists, listenTime } from "@/lib/storage";
 import { audioCache } from "@/lib/audioCache";
 import { Equalizer } from "@/lib/equalizer";
+import { prefetch } from "@/lib/prefetch";
+import { cached, TTL } from "@/lib/cache";
 import { useSettings } from "./SettingsContext";
 
 type Repeat = "off" | "all" | "one";
@@ -72,6 +74,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const sleepTimeoutRef = useRef<number | null>(null);
   const fadeIntervalRef = useRef<number | null>(null);
   const endOfSongRef = useRef(false);
+  // Track whether we've already retried this song with a fresh URL, so we
+  // don't loop forever if the actual audio file really is short.
+  const retriedRef = useRef<Set<string>>(new Set());
 
   const [state, setState] = useState<PlayerState>({
     currentSong: null, queue: [], queueIndex: -1, queueSource: "",
@@ -191,15 +196,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     try { sa.currentTime = 0; } catch {}
   }
 
-  const ensureFullSong = useCallback(async (song: Song): Promise<Song> => {
-    if (song.downloadUrl?.length) return song;
-    const cached = songCache.get(song.id);
-    if (cached?.downloadUrl?.length) return cached;
+  // ALWAYS refetch song details via /api/songs/{id} so we get fresh, non-truncated
+  // download URLs. JioSaavn rotates audio CDN URLs and the ones embedded in
+  // search results sometimes return preview-length audio. The cache layer makes
+  // this fast (7-day TTL, instant from localStorage on repeat plays).
+  const ensureFullSong = useCallback(async (song: Song, forceRefresh = false): Promise<Song> => {
     try {
-      const data = await api.getSong(song.id);
+      const fetcher = () => api.getSong(song.id);
+      if (forceRefresh) {
+        const data = await fetcher();
+        const full = Array.isArray(data) ? data[0] : data;
+        if (full?.downloadUrl?.length) {
+          songCache.put(full);
+          return full;
+        }
+      }
+      const data = await cached(`song:${song.id}`, TTL.song, fetcher);
       const full = Array.isArray(data) ? data[0] : data;
-      if (full) { songCache.put(full); return full; }
+      if (full?.downloadUrl?.length) {
+        songCache.put(full);
+        return full;
+      }
     } catch {}
+    // Fallback: use whatever URLs the original song object carries
+    if (song.downloadUrl?.length) return song;
+    const cachedSong = songCache.get(song.id);
+    if (cachedSong?.downloadUrl?.length) return cachedSong;
     return song;
   }, []);
 
@@ -216,6 +238,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!isAllowed(song)) return;
 
     setState((s) => ({ ...s, isBuffering: true, currentSong: song }));
+    // Trim retry-tracking memory periodically
+    if (retriedRef.current.size > 50) retriedRef.current.clear();
     const full = await ensureFullSong(song);
 
     // Free prior blob URL
@@ -256,6 +280,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const q = s.queue.slice();
         const idx = q.findIndex((x) => x.id === full.id);
         if (idx >= 0) q[idx] = full;
+        // Prefetch the next 2 songs: full metadata + audio warm + image
+        const here = idx >= 0 ? idx : s.queueIndex;
+        for (let i = 1; i <= 2; i++) {
+          const nxt = q[here + i];
+          if (nxt) {
+            prefetch.song(nxt.id);
+            prefetch.image(pickImage(nxt.image, "med"));
+            prefetch.image(pickImage(nxt.image, "high"));
+            if (nxt.album?.id) prefetch.album(nxt.album.id);
+            if (nxt.artists?.primary?.[0]?.id) prefetch.artist(nxt.artists.primary[0].id);
+          }
+        }
         return { ...s, currentSong: full, queue: q, isBuffering: false };
       });
       updateMediaSession(full);
@@ -340,30 +376,56 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setSleepEndsAt(null);
       return;
     }
+    // Truncation detection: if the song ended but actual playback was much
+    // shorter than the metadata duration, the URL was a stale preview. Refetch
+    // a fresh download URL and retry once.
+    const a = audioRef.current;
     setState((s) => {
-      if (s.repeat === "one") {
-        const a = audioRef.current;
-        if (a) { a.currentTime = 0; a.play().catch(() => {}); }
+      const cur = s.currentSong;
+      const expected = typeof cur?.duration === "string" ? parseInt(cur.duration, 10) : (cur?.duration || 0);
+      const actual = a?.duration || 0;
+      if (cur && expected > 60 && actual > 0 && actual < expected - 20 && !retriedRef.current.has(cur.id)) {
+        retriedRef.current.add(cur.id);
+        // Refresh URLs and retry the same song
+        (async () => {
+          const fresh = await ensureFullSong(cur, true);
+          if (a && fresh.downloadUrl?.length) {
+            const url = pickDownloadUrl(fresh, settings.quality);
+            if (url) {
+              a.src = url;
+              try { await a.play(); } catch {}
+            }
+          }
+        })();
         return s;
       }
-      if (s.shuffle) {
-        const idx = Math.floor(Math.random() * s.queue.length);
-        if (s.queue[idx]) loadAndPlay(s.queue[idx]);
-        return { ...s, queueIndex: idx };
-      }
-      const nextIdx = s.queueIndex + 1;
-      if (nextIdx < s.queue.length) {
-        loadAndPlay(s.queue[nextIdx]);
-        return { ...s, queueIndex: nextIdx };
-      }
-      if (s.repeat === "all" && s.queue.length) {
-        loadAndPlay(s.queue[0]);
-        return { ...s, queueIndex: 0 };
-      }
-      if (settings.autoplay && s.currentSong) autoplaySimilar(s.currentSong);
-      return s;
+      return advanceQueue(s);
     });
-  }, [loadAndPlay, settings.autoplay]);
+  }, [ensureFullSong, settings.quality]);
+
+  function advanceQueue(s: PlayerState): PlayerState {
+    if (s.repeat === "one") {
+      const a = audioRef.current;
+      if (a) { a.currentTime = 0; a.play().catch(() => {}); }
+      return s;
+    }
+    if (s.shuffle) {
+      const idx = Math.floor(Math.random() * s.queue.length);
+      if (s.queue[idx]) loadAndPlay(s.queue[idx]);
+      return { ...s, queueIndex: idx };
+    }
+    const nextIdx = s.queueIndex + 1;
+    if (nextIdx < s.queue.length) {
+      loadAndPlay(s.queue[nextIdx]);
+      return { ...s, queueIndex: nextIdx };
+    }
+    if (s.repeat === "all" && s.queue.length) {
+      loadAndPlay(s.queue[0]);
+      return { ...s, queueIndex: 0 };
+    }
+    if (settings.autoplay && s.currentSong) autoplaySimilar(s.currentSong);
+    return s;
+  }
 
   const autoplaySimilar = useCallback(async (song: Song) => {
     try {

@@ -1,33 +1,31 @@
 "use client";
 import { use, useEffect, useState } from "react";
-import { Play, Shuffle, Heart, Loader2 } from "lucide-react";
+import { Play, Shuffle, Heart, Loader2, Download, MoreHorizontal } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Album } from "@/lib/types";
 import { decodeHtml, fmtDuration, pickImage, shuffle as shuf } from "@/lib/utils";
+import { extractDominantColor } from "@/lib/colorExtract";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useLibrary } from "@/contexts/LibraryContext";
 import { useToast } from "@/contexts/ToastContext";
 import { SongRow } from "@/components/SongRow";
 import { songCache } from "@/lib/storage";
+import { useCached, TTL } from "@/lib/cache";
 
 export default function AlbumPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [album, setAlbum] = useState<Album | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: album, isLoading } = useCached<Album>(`album:${id}`, TTL.album, () => api.getAlbum(id));
+  const [bgColor, setBgColor] = useState("#1f1f1f");
   const player = usePlayer();
   const { isSavedAlbum, toggleSavedAlbum } = useLibrary();
   const { toast } = useToast();
 
   useEffect(() => {
-    setLoading(true);
-    api.getAlbum(id).then((a) => {
-      setAlbum(a);
-      if (a.songs) songCache.putMany(a.songs);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [id]);
+    if (album?.songs) songCache.putMany(album.songs);
+    if (album) extractDominantColor(pickImage(album.image, "high")).then(setBgColor);
+  }, [album]);
 
-  if (loading) {
+  if (isLoading && !album) {
     return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
   }
   if (!album) return <div className="p-8 text-center text-secondary">Album not found</div>;
@@ -38,63 +36,41 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
 
   return (
     <div className="fade-in">
-      <div className="relative">
-        <div
-          className="absolute inset-0 h-72 opacity-50"
-          style={{
-            backgroundImage: `url(${pickImage(album.image, "high")})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            filter: "blur(40px)",
-          }}
-        />
-        <div className="absolute inset-0 h-72 bg-gradient-to-b from-transparent to-bg" />
-        <div className="relative px-4 md:px-6 lg:px-8 py-8 flex flex-col md:flex-row gap-6 items-end">
-          <img src={pickImage(album.image, "high")} alt="" className="w-48 h-48 md:w-56 md:h-56 rounded-md shadow-2xl object-cover" />
+      <div className="relative" style={{ background: `linear-gradient(180deg, ${bgColor} 0%, transparent 100%)` }}>
+        <div className="px-4 md:px-8 lg:px-12 pt-12 pb-6 flex flex-col md:flex-row gap-8 items-end">
+          <img src={pickImage(album.image, "high")} alt="" className="w-56 h-56 md:w-64 md:h-64 rounded-lg art-glow object-cover" style={{ ["--glow-color" as string]: "rgba(0,0,0,0.5)" }} />
           <div className="flex-1 min-w-0">
-            <div className="text-xs uppercase font-semibold text-secondary">Album</div>
-            <h1 className="text-3xl md:text-5xl font-bold mt-2">{decodeHtml(album.name)}</h1>
-            <p className="text-secondary mt-3 text-sm">
-              {album.artists?.primary?.map((a) => a.name).join(", ")} • {album.year} • {songs.length} songs • {fmtDuration(totalDuration)}
-            </p>
+            <div className="text-xs uppercase font-bold tracking-widest text-white/80">Album</div>
+            <h1 className="text-4xl md:text-7xl font-extrabold mt-2 tracking-tight drop-shadow-lg leading-none">{decodeHtml(album.name)}</h1>
+            {album.description && <p className="text-white/70 text-sm mt-3 line-clamp-2 max-w-2xl">{decodeHtml(album.description)}</p>}
+            <div className="flex flex-wrap items-center gap-x-2 text-sm text-white/80 mt-4">
+              <span className="font-bold text-white">{album.artists?.primary?.map((a) => a.name).join(", ")}</span>
+              {album.year && <><span>•</span><span>{album.year}</span></>}
+              <span>•</span><span>{songs.length} songs, {fmtDuration(totalDuration)}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="px-4 md:px-6 lg:px-8 py-4 flex items-center gap-4">
-        <button
-          onClick={() => songs.length && player.playList(songs, 0)}
-          className="bg-accent text-black rounded-full p-4 hover:scale-105 transition shadow-lg"
-        >
-          <Play className="w-6 h-6 fill-black ml-0.5" />
+      <div className="px-4 md:px-8 lg:px-12 py-6 flex items-center gap-6 relative" style={{ background: `linear-gradient(180deg, ${bgColor}40, transparent)` }}>
+        <button onClick={() => songs.length && player.playList(songs, 0, `Album · ${album.name}`)} className="btn-icon-large" aria-label="Play album">
+          <Play className="w-7 h-7 fill-black ml-1" />
         </button>
-        <button
-          onClick={() => songs.length && player.playList(shuf(songs), 0)}
-          className="text-secondary hover:text-white p-2"
-          title="Shuffle"
-        >
-          <Shuffle className="w-6 h-6" />
+        <button onClick={() => songs.length && player.playList(shuf(songs), 0, `Album · ${album.name}`)} className="text-white/70 hover:text-white p-2" aria-label="Shuffle">
+          <Shuffle className="w-7 h-7" />
         </button>
-        <button
-          onClick={() => {
-            const added = toggleSavedAlbum(album.id);
-            toast(added ? "Added to your library" : "Removed from library", added ? "success" : "info");
-          }}
-          className="p-2"
-          title={saved ? "Remove from library" : "Save to library"}
-        >
-          <Heart className={`w-6 h-6 ${saved ? "fill-accent text-accent" : "text-secondary hover:text-white"}`} />
+        <button onClick={() => { const a = toggleSavedAlbum(album.id); toast(a ? "Added to your library" : "Removed", a ? "success" : "info"); }} className="p-2" aria-label={saved ? "Remove" : "Save"}>
+          <Heart className={`w-8 h-8 ${saved ? "fill-accent text-accent" : "text-white/70 hover:text-white"}`} />
         </button>
+        <button className="text-white/70 hover:text-white p-2" aria-label="More"><MoreHorizontal className="w-7 h-7" /></button>
       </div>
 
-      <div className="px-4 md:px-6 lg:px-8 pb-8">
-        <div className="border-b border-white/5 pb-2 mb-2 px-2 text-xs text-secondary uppercase grid grid-cols-[2rem_2.5rem_1fr_auto_3rem] sm:grid-cols-[2rem_2.5rem_1fr_11rem_auto_3rem] gap-3">
-          <span>#</span>
-          <span></span>
-          <span>Title</span>
-          <span className="hidden md:block">Album</span>
-          <span></span>
-          <span className="hidden sm:block">Time</span>
+      <div className="px-4 md:px-8 lg:px-12 pb-12">
+        <div className="border-b border-white/10 pb-2 mb-2 px-2 text-[11px] text-secondary uppercase tracking-widest font-bold flex items-center gap-3">
+          <span className="w-8 text-center">#</span>
+          <span className="w-11" />
+          <span className="flex-1">Title</span>
+          <span className="w-12 text-right hidden sm:block">Duration</span>
         </div>
         {songs.map((s, i) => <SongRow key={s.id} song={s} index={i} queue={songs} showAlbum={false} />)}
       </div>

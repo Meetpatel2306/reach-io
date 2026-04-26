@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useState, ReactNode } from "rea
 interface Toast {
   id: number;
   message: string;
-  type?: "info" | "success" | "error";
+  type?: "info" | "success" | "error" | "warning";
 }
 
 interface Ctx {

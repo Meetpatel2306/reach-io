@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown, Play, Pause, SkipForward, SkipBack, Shuffle, Repeat, Repeat1,
   Heart, ListMusic, Mic2, Download, Share2, Volume2, VolumeX, MoreHorizontal,
-  Moon, Settings2, Check, Car, Info
+  Moon, Settings2, Check, Car
 } from "lucide-react";
 import Link from "next/link";
 import { usePlayer } from "@/contexts/PlayerContext";
@@ -28,6 +28,7 @@ export function FullPlayer() {
   const [showInfo, setShowInfo] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [bgColor, setBgColor] = useState("#1f1f1f");
+  const [glowColor, setGlowColor] = useState("rgba(0,0,0,0.4)");
   const [sleepCountdown, setSleepCountdown] = useState<string>("");
   const sheetRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef(0);
@@ -37,7 +38,15 @@ export function FullPlayer() {
 
   useEffect(() => {
     if (!song) return;
-    extractDominantColor(pickImage(song.image, "high")).then(setBgColor);
+    const url = pickImage(song.image, "high");
+    extractDominantColor(url).then((hex) => {
+      setBgColor(hex);
+      // Brighter glow color
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      setGlowColor(`rgba(${Math.min(255, r * 1.6)}, ${Math.min(255, g * 1.6)}, ${Math.min(255, b * 1.6)}, 0.5)`);
+    });
   }, [song?.id]);
 
   useEffect(() => {
@@ -112,24 +121,32 @@ export function FullPlayer() {
   return (
     <div
       ref={sheetRef}
-      className="fixed inset-0 z-50 flex flex-col slide-up touch-pan-y"
-      style={{ background: `linear-gradient(180deg, ${bgColor} 0%, #0a0a0a 75%)`, paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+      className="fixed inset-0 z-50 flex flex-col slide-up touch-pan-y overflow-hidden"
+      style={{
+        background: `linear-gradient(180deg, ${bgColor} 0%, #0a0a0a 80%)`,
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
       <div
-        className="absolute inset-0 opacity-25 pointer-events-none"
-        style={{ backgroundImage: `url(${pickImage(song.image, "high")})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(80px) saturate(1.4)" }}
+        className="absolute inset-0 opacity-30 pointer-events-none"
+        style={{ backgroundImage: `url(${pickImage(song.image, "high")})`, backgroundSize: "cover", backgroundPosition: "center", filter: "blur(120px) saturate(1.5)" }}
       />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/40 pointer-events-none" />
 
       <div className="relative flex flex-col h-full overflow-y-auto">
-        <header className="flex items-center justify-between px-4 md:px-6 py-3">
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="w-10 h-1 bg-white/30 rounded-full" />
+        </div>
+        <header className="flex items-center justify-between px-4 md:px-6 py-2">
           <button onClick={() => player.setExpanded(false)} className="p-2 hover:bg-white/10 rounded-full" aria-label="Minimize">
             <ChevronDown className="w-6 h-6" />
           </button>
           <div className="text-center">
-            <div className="text-[10px] text-secondary uppercase tracking-widest">Playing from</div>
+            <div className="text-[10px] text-white/70 uppercase tracking-widest font-semibold">Playing from</div>
             <div className="text-sm font-semibold line-clamp-1 max-w-[200px]">{player.queueSource || song.album?.name || "Queue"}</div>
           </div>
           <button onClick={() => setShowInfo((v) => !v)} className="p-2 hover:bg-white/10 rounded-full" aria-label="Info">
@@ -138,7 +155,7 @@ export function FullPlayer() {
         </header>
 
         <div className="flex-1 flex flex-col lg:flex-row gap-6 px-4 md:px-8 lg:px-16 pb-6">
-          <div className="flex-1 flex items-center justify-center min-h-0">
+          <div className="flex-1 flex items-center justify-center min-h-0 py-4">
             {player.showLyrics ? (
               <LyricsPanel song={song} />
             ) : player.showQueue ? (
@@ -150,17 +167,18 @@ export function FullPlayer() {
                 <img
                   src={pickImage(song.image, "high")}
                   alt=""
-                  className={`w-full aspect-square object-cover shadow-2xl ${settings.vinylRotation ? "rounded-full spin-slow" : "rounded-xl"} ${!player.isPlaying ? "spin-paused" : ""}`}
+                  className={`w-full aspect-square object-cover art-glow ${settings.vinylRotation ? "rounded-full spin-slow" : ""} ${!player.isPlaying ? "spin-paused" : ""}`}
+                  style={{ ["--glow-color" as string]: glowColor }}
                 />
               </div>
             )}
           </div>
 
-          <div className="lg:w-[26rem] flex flex-col justify-end gap-4">
-            <div className="flex items-center justify-between gap-4 mb-1">
+          <div className="lg:w-[26rem] flex flex-col justify-end gap-5">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <div className="text-2xl md:text-3xl font-bold truncate">{decodeHtml(song.name)}</div>
-                <div className="text-secondary mt-1 line-clamp-1">
+                <div className="text-2xl md:text-3xl font-extrabold tracking-tight truncate">{decodeHtml(song.name)}</div>
+                <div className="text-white/70 mt-1.5 line-clamp-1">
                   {song.artists?.primary?.map((a, i) => (
                     <span key={a.id}>
                       <Link href={`/artist/${a.id}`} className="hover:text-white hover:underline" onClick={() => player.setExpanded(false)}>
@@ -171,7 +189,7 @@ export function FullPlayer() {
                   ))}
                 </div>
                 {song.album?.id && (
-                  <Link href={`/album/${song.album.id}`} onClick={() => player.setExpanded(false)} className="text-sm text-secondary hover:text-white hover:underline">
+                  <Link href={`/album/${song.album.id}`} onClick={() => player.setExpanded(false)} className="text-sm text-white/50 hover:text-white hover:underline">
                     {decodeHtml(song.album.name)}
                   </Link>
                 )}
@@ -184,7 +202,7 @@ export function FullPlayer() {
                 className="p-2 no-drag"
                 aria-label="Like"
               >
-                <Heart className={`w-7 h-7 ${liked ? "fill-accent text-accent scale-bounce" : "text-secondary hover:text-white"}`} />
+                <Heart className={`w-7 h-7 ${liked ? "fill-accent text-accent scale-bounce" : "text-white/70 hover:text-white"}`} />
               </button>
             </div>
 
@@ -197,34 +215,34 @@ export function FullPlayer() {
                 style={{ ["--val" as string]: `${player.progress}%` }}
                 aria-label="Seek"
               />
-              <div className="flex justify-between text-xs text-secondary mt-1">
+              <div className="flex justify-between text-[11px] text-white/60 tabular-nums mt-1.5">
                 <span>{fmtTime(player.currentTime)}</span>
                 <span>-{fmtTime(remaining)}</span>
               </div>
             </div>
 
             <div className="flex items-center justify-between no-drag">
-              <button onClick={player.toggleShuffle} className={`p-2 ${player.shuffle ? "text-accent" : "text-secondary hover:text-white"}`} aria-label="Shuffle">
+              <button onClick={player.toggleShuffle} className={`p-2 relative ${player.shuffle ? "text-accent" : "text-white/70 hover:text-white"}`} aria-label="Shuffle">
                 <Shuffle className="w-5 h-5" />
-                {player.shuffle && <span className="block w-1 h-1 rounded-full bg-accent mx-auto mt-0.5" />}
+                {player.shuffle && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />}
               </button>
               <button onClick={player.prev} className="p-2 text-white hover:scale-110 transition" aria-label="Previous">
                 <SkipBack className="w-7 h-7 fill-white" />
               </button>
-              <button onClick={player.togglePlay} className="bg-white text-black rounded-full p-4 hover:scale-105 transition shadow-2xl" aria-label="Play/Pause">
-                {player.isPlaying ? <Pause className="w-7 h-7 fill-black" /> : <Play className="w-7 h-7 fill-black ml-0.5" />}
+              <button onClick={player.togglePlay} className="bg-white text-black rounded-full w-16 h-16 hover:scale-105 transition shadow-2xl flex items-center justify-center" aria-label="Play/Pause">
+                {player.isPlaying ? <Pause className="w-7 h-7 fill-black" /> : <Play className="w-7 h-7 fill-black ml-1" />}
               </button>
               <button onClick={player.next} className="p-2 text-white hover:scale-110 transition" aria-label="Next">
                 <SkipForward className="w-7 h-7 fill-white" />
               </button>
-              <button onClick={player.toggleRepeat} className={`p-2 relative ${player.repeat !== "off" ? "text-accent" : "text-secondary hover:text-white"}`} aria-label="Repeat">
+              <button onClick={player.toggleRepeat} className={`p-2 relative ${player.repeat !== "off" ? "text-accent" : "text-white/70 hover:text-white"}`} aria-label="Repeat">
                 <RepeatIcon className="w-5 h-5" />
-                {player.repeat !== "off" && <span className="block w-1 h-1 rounded-full bg-accent mx-auto mt-0.5" />}
+                {player.repeat !== "off" && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />}
               </button>
             </div>
 
-            <div className="flex items-center justify-between text-secondary no-drag">
-              <button onClick={() => player.setShowCarMode(true)} className="p-2 hover:text-white" title="Car Mode" aria-label="Car Mode">
+            <div className="flex items-center justify-between text-white/70 no-drag">
+              <button onClick={() => player.setShowCarMode(true)} className="p-2 hover:text-white" aria-label="Car Mode" title="Car Mode">
                 <Car className="w-5 h-5" />
               </button>
               <button onClick={() => player.setShowLyrics(!player.showLyrics)} className={`p-2 ${player.showLyrics ? "text-accent" : "hover:text-white"}`} title="Lyrics" aria-label="Lyrics">
@@ -244,13 +262,11 @@ export function FullPlayer() {
                   <Settings2 className="w-5 h-5" />
                 </button>
                 {showQuality && (
-                  <div className="absolute right-0 bottom-full mb-2 bg-card rounded-lg shadow-xl border border-white/10 p-2 min-w-[160px] z-10">
+                  <div className="absolute right-0 bottom-full mb-2 glass-strong rounded-xl shadow-2xl p-1.5 min-w-[160px] z-10">
                     {(["12kbps", "48kbps", "96kbps", "160kbps", "320kbps"] as Quality[]).map((q) => (
-                      <button
-                        key={q}
+                      <button key={q}
                         onClick={() => { update({ quality: q }); setShowQuality(false); toast(`Quality: ${q}`, "success"); }}
-                        className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-card-hover flex items-center gap-2 ${settings.quality === q ? "text-accent" : "text-white"}`}
-                      >
+                        className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-white/10 flex items-center gap-2 ${settings.quality === q ? "text-accent" : "text-white"}`}>
                         {settings.quality === q && <Check className="w-3 h-3" />} {q}
                       </button>
                     ))}
@@ -258,32 +274,25 @@ export function FullPlayer() {
                 )}
               </div>
               <div className="relative">
-                <button onClick={() => { setShowSleep(!showSleep); setShowQuality(false); }} className={`p-2 ${player.sleepTimer != null ? "text-accent" : "hover:text-white"} relative`} title="Sleep" aria-label="Sleep">
+                <button onClick={() => { setShowSleep(!showSleep); setShowQuality(false); }} className={`p-2 relative ${player.sleepTimer != null ? "text-accent" : "hover:text-white"}`} title="Sleep" aria-label="Sleep">
                   <Moon className="w-5 h-5" />
                   {sleepCountdown && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold bg-accent text-black px-1 rounded">{sleepCountdown}</span>}
                 </button>
                 {showSleep && (
-                  <div className="absolute right-0 bottom-full mb-2 bg-card rounded-lg shadow-xl border border-white/10 p-2 min-w-[180px] z-10">
+                  <div className="absolute right-0 bottom-full mb-2 glass-strong rounded-xl shadow-2xl p-1.5 min-w-[180px] z-10">
                     {[5, 10, 15, 30, 45, 60, 120].map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => { player.setSleepTimer(m); setShowSleep(false); toast(`Music will stop in ${m} min`, "info"); }}
-                        className="w-full text-left px-3 py-2 rounded text-sm hover:bg-card-hover"
-                      >
+                      <button key={m} onClick={() => { player.setSleepTimer(m); setShowSleep(false); toast(`Music will stop in ${m} min`, "info"); }}
+                        className="w-full text-left px-3 py-2 rounded text-sm hover:bg-white/10">
                         {m >= 60 ? `${m / 60} hour${m > 60 ? "s" : ""}` : `${m} minutes`}
                       </button>
                     ))}
-                    <button
-                      onClick={() => { player.setSleepTimer(0, true); setShowSleep(false); toast("Stopping at end of song", "info"); }}
-                      className="w-full text-left px-3 py-2 rounded text-sm hover:bg-card-hover"
-                    >
+                    <button onClick={() => { player.setSleepTimer(0, true); setShowSleep(false); toast("Stopping at end of song", "info"); }}
+                      className="w-full text-left px-3 py-2 rounded text-sm hover:bg-white/10">
                       End of current track
                     </button>
                     {player.sleepTimer != null && (
-                      <button
-                        onClick={() => { player.setSleepTimer(null); setShowSleep(false); toast("Sleep timer cancelled", "info"); }}
-                        className="w-full text-left px-3 py-2 rounded text-sm text-red-400 hover:bg-card-hover"
-                      >
+                      <button onClick={() => { player.setSleepTimer(null); setShowSleep(false); toast("Sleep timer cancelled", "info"); }}
+                        className="w-full text-left px-3 py-2 rounded text-sm text-red-400 hover:bg-white/10">
                         Cancel timer
                       </button>
                     )}
@@ -292,7 +301,7 @@ export function FullPlayer() {
               </div>
             </div>
 
-            <div className="hidden lg:flex items-center gap-2 text-secondary no-drag">
+            <div className="hidden lg:flex items-center gap-2 text-white/70 no-drag">
               <button onClick={player.toggleMute} aria-label="Mute">
                 {player.isMuted || player.volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
@@ -314,7 +323,7 @@ export function FullPlayer() {
 
 function InfoPanel({ song, playCount, quality, onClose }: { song: any; playCount: number; quality: string; onClose: () => void }) {
   return (
-    <div className="w-full max-w-2xl bg-black/50 rounded-2xl p-6 max-h-full overflow-y-auto no-drag">
+    <div className="w-full max-w-2xl glass-strong rounded-2xl p-6 max-h-full overflow-y-auto no-drag">
       <h3 className="text-xl font-bold mb-4">Song Info</h3>
       <dl className="space-y-3 text-sm">
         <div className="flex justify-between gap-4"><dt className="text-secondary">Year</dt><dd>{song.year || "—"}</dd></div>
@@ -325,16 +334,16 @@ function InfoPanel({ song, playCount, quality, onClose }: { song: any; playCount
         <div className="flex justify-between gap-4"><dt className="text-secondary">Label</dt><dd>{song.label || "—"}</dd></div>
         {song.artists?.primary?.length > 0 && (
           <div>
-            <dt className="text-secondary mb-1">Artists</dt>
-            <dd className="flex flex-wrap gap-1">
+            <dt className="text-secondary mb-2">Artists</dt>
+            <dd className="flex flex-wrap gap-1.5">
               {song.artists.primary.map((a: any) => (
-                <span key={a.id} className="bg-white/10 px-2 py-0.5 rounded text-xs">{a.name}</span>
+                <span key={a.id} className="bg-white/10 px-2.5 py-1 rounded-full text-xs">{a.name}</span>
               ))}
             </dd>
           </div>
         )}
       </dl>
-      <button onClick={onClose} className="mt-6 w-full py-2 bg-white/10 hover:bg-white/20 rounded text-sm">Close</button>
+      <button onClick={onClose} className="mt-6 w-full py-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-semibold">Close</button>
     </div>
   );
 }

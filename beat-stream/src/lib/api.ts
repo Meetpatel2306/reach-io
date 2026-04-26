@@ -1,10 +1,33 @@
 import type { Album, Artist, Playlist, Song } from "./types";
 
-const BASE = "https://saavn.dev";
+// Multiple mirrors of the same JioSaavn API. We try them in order and
+// remember which one is currently working so subsequent calls are fast.
+// All mirrors share the exact same response shape.
+const HOSTS = [
+  "https://saavn.dev",
+  "https://saavn-api-eight.vercel.app",
+  "https://saavn.me",
+];
+
 const TIMEOUT = 10_000;
 const TTL = 5 * 60 * 1000;
+const HOST_KEY = "bs-api-host";
 
 const memCache = new Map<string, { data: unknown; ts: number }>();
+
+function preferredHost(): string {
+  if (typeof window === "undefined") return HOSTS[0];
+  try {
+    const saved = localStorage.getItem(HOST_KEY);
+    if (saved && HOSTS.includes(saved)) return saved;
+  } catch {}
+  return HOSTS[0];
+}
+
+function rememberHost(h: string) {
+  if (typeof window === "undefined") return;
+  try { localStorage.setItem(HOST_KEY, h); } catch {}
+}
 
 interface ApiResponse<T> { success: boolean; data: T; }
 
@@ -18,18 +41,29 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   }
 }
 
+async function tryHost<T>(host: string, path: string): Promise<T> {
+  const res = await fetchWithTimeout(`${host}${path}`, TIMEOUT);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  const json = (await res.json()) as ApiResponse<T>;
+  if (!json || (json.success === false && !json.data)) throw new Error("API empty");
+  return json.data;
+}
+
 async function get<T>(path: string): Promise<T> {
   const cached = memCache.get(path);
   if (cached && Date.now() - cached.ts < TTL) return cached.data as T;
-  const url = `${BASE}${path}`;
+
+  // Order hosts: preferred first, then the rest
+  const preferred = preferredHost();
+  const ordered = [preferred, ...HOSTS.filter((h) => h !== preferred)];
+
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (const host of ordered) {
     try {
-      const res = await fetchWithTimeout(url, TIMEOUT);
-      if (!res.ok) throw new Error(`API ${res.status}`);
-      const json = (await res.json()) as ApiResponse<T>;
-      memCache.set(path, { data: json.data, ts: Date.now() });
-      return json.data;
+      const data = await tryHost<T>(host, path);
+      memCache.set(path, { data, ts: Date.now() });
+      if (host !== preferred) rememberHost(host);
+      return data;
     } catch (e) {
       lastErr = e;
     }
@@ -37,12 +71,7 @@ async function get<T>(path: string): Promise<T> {
   throw lastErr;
 }
 
-export interface SearchResult<T> {
-  total: number;
-  start: number;
-  results: T[];
-}
-
+export interface SearchResult<T> { total: number; start: number; results: T[]; }
 export interface GlobalSearchResult {
   topQuery?: { results: { id: string; title: string; type: string; image?: { quality: string; url: string }[] }[] };
   songs?: { results: Song[] };
@@ -76,8 +105,10 @@ export const api = {
         `/api/songs/${id}/lyrics`
       );
       return data.lyrics || null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   },
 };
+
+export const API_HOSTS = HOSTS;
+export function setApiHost(host: string) { rememberHost(host); memCache.clear(); }
+export function getApiHost(): string { return preferredHost(); }

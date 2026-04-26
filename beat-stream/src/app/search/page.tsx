@@ -10,6 +10,8 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { useToast } from "@/contexts/ToastContext";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { decodeHtml, pickImage, artistsName } from "@/lib/utils";
+import { rankSongs } from "@/lib/rank";
+import { cached, TTL } from "@/lib/cache";
 import { SongRow } from "@/components/SongRow";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
@@ -45,6 +47,7 @@ function SearchInner() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const player = usePlayer();
   const recognitionRef = useRef<any>(null);
@@ -54,19 +57,31 @@ function SearchInner() {
 
   useEffect(() => {
     if (!debounced.trim()) {
-      setSongs([]); setAlbums([]); setArtists([]); setPlaylists([]); setHasMore(false);
+      setSongs([]); setAlbums([]); setArtists([]); setPlaylists([]); setHasMore(false); setError(null);
       return;
     }
     setLoading(true);
+    setError(null);
     setPage(0);
-    Promise.all([
-      api.searchSongs(debounced, 0, 20).then((r) => r.results).catch(() => []),
-      api.searchAlbums(debounced, 0, 12).then((r) => r.results).catch(() => []),
-      api.searchArtists(debounced, 0, 12).then((r) => r.results).catch(() => []),
-      api.searchPlaylists(debounced, 0, 12).then((r) => r.results).catch(() => []),
-    ]).then(([s, a, ar, p]) => {
-      setSongs(s); setAlbums(a); setArtists(ar); setPlaylists(p);
-      setHasMore(s.length >= 20);
+    // Cache full search bundle per query for 1 day. Repeat searches hit zero
+    // network, render in <10ms.
+    const key = `search:${debounced.toLowerCase()}`;
+    cached(key, TTL.search, () => Promise.all([
+      api.searchSongs(debounced, 0, 40).then((r) => r.results).catch(() => null),
+      api.searchAlbums(debounced, 0, 12).then((r) => r.results).catch(() => null),
+      api.searchArtists(debounced, 0, 12).then((r) => r.results).catch(() => null),
+      api.searchPlaylists(debounced, 0, 12).then((r) => r.results).catch(() => null),
+    ])).then(([s, a, ar, p]) => {
+      const allFailed = s == null && a == null && ar == null && p == null;
+      if (allFailed) {
+        setError("Couldn't reach the music API. Check your internet — your network may be blocking it. Try again in a moment or open Settings → About to switch API mirror.");
+      }
+      const ranked = rankSongs(s || [], debounced);
+      setSongs(ranked); setAlbums(a || []); setArtists(ar || []); setPlaylists(p || []);
+      setHasMore((s?.length || 0) >= 40);
+      setLoading(false);
+    }).catch(() => {
+      setError("Search failed. Check Settings → About → API Mirror.");
       setLoading(false);
     });
   }, [debounced]);
@@ -83,9 +98,10 @@ function SearchInner() {
     if (loading || !hasMore || !debounced) return;
     setLoading(true);
     const next = page + 1;
-    const r = await api.searchSongs(debounced, next, 20).catch(() => null);
+    const r = await cached(`search:${debounced.toLowerCase()}:p${next}`, TTL.search,
+      () => api.searchSongs(debounced, next, 20)).catch(() => null);
     if (r) {
-      setSongs((s) => [...s, ...r.results]);
+      setSongs((s) => rankSongs([...s, ...r.results], debounced));
       setHasMore(r.results.length >= 20);
       setPage(next);
     }
@@ -203,6 +219,18 @@ function SearchInner() {
             ))}
           </div>
 
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-300 rounded-lg p-4 mb-6 text-sm">
+              {error}
+            </div>
+          )}
+          {!error && !loading && songs.length === 0 && albums.length === 0 && artists.length === 0 && playlists.length === 0 && (
+            <div className="text-center py-16 text-secondary">
+              <SearchIcon className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <div className="text-lg font-semibold text-white">No results found for "{query}"</div>
+              <div className="text-sm mt-1">Try a different spelling or different keywords</div>
+            </div>
+          )}
           {loading && page === 0 ? (
             <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>
           ) : (

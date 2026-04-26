@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { Song } from "@/lib/types";
 import { api } from "@/lib/api";
+import { cached, TTL } from "@/lib/cache";
 
 export function LyricsPanel({ song }: { song: Song }) {
   const [lyrics, setLyrics] = useState<string | null>(null);
@@ -13,7 +14,7 @@ export function LyricsPanel({ song }: { song: Song }) {
     let cancelled = false;
     setLoading(true);
     setLyrics(null);
-    api.getLyrics(song.id).then((l) => {
+    cached(`lyrics:${song.id}`, TTL.lyrics, () => api.getLyrics(song.id)).then((l) => {
       if (!cancelled) {
         setLyrics(l);
         setLoading(false);

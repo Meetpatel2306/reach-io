@@ -1,6 +1,6 @@
-const CACHE_NAME = "beatstream-v2";
-const API_CACHE = "beatstream-api-v2";
-const IMAGE_CACHE = "beatstream-images-v2";
+const CACHE_NAME = "beatstream-v5";
+const API_CACHE = "beatstream-api-v3";
+const IMAGE_CACHE = "beatstream-images-v3";
 const OFFLINE_URL = "/";
 const API_TTL = 60 * 60 * 1000; // 1 hour
 
@@ -29,7 +29,8 @@ function isAudio(url) {
 function isImage(url) {
   return /\.(png|jpg|jpeg|webp|gif|svg)(\?|$)/i.test(url) || url.includes("c.saavncdn.com");
 }
-function isApi(url) { return url.hostname === "saavn.dev"; }
+const API_HOSTS = ["saavn.dev", "saavn-api-eight.vercel.app", "saavn.me"];
+function isApi(url) { return API_HOSTS.includes(url.hostname); }
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);

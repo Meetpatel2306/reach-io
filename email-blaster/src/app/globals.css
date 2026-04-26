@@ -3,10 +3,51 @@
 :root {
   --primary: #6366f1;
   --primary-hover: #818cf8;
+  /* iOS safe area insets */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 body {
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* iOS standalone safe area */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  /* Prevent iOS double-tap zoom */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  /* Disable text selection on UI elements (still allowed in inputs) */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea, [contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* iOS pull-to-refresh disable on standalone */
+html {
+  overscroll-behavior-y: none;
+}
+
+/* Smooth iOS-style scrolling */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Tour spotlight pulse animation */
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.5), 0 0 30px 10px rgba(139, 92, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0), 0 0 40px 20px rgba(139, 92, 246, 0.3);
+  }
 }
 
 /* Glassmorphism card */

@@ -5,7 +5,7 @@ import {
   FileText, Upload, Mail, Send, Users, Check, X, Trash2,
   Save, ChevronRight, ChevronLeft, Download, Activity,
   Clock, Paperclip, Eye, EyeOff, Settings, Loader2, History,
-  Zap, HelpCircle, Shield, Key, BookOpen
+  Zap, HelpCircle, Shield, Key, BookOpen, Share, Plus, Smartphone
 } from "lucide-react";
 import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
@@ -132,6 +132,8 @@ export default function Home() {
 
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [showIOSInstall, setShowIOSInstall] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
   // Persist state to localStorage whenever key values change
@@ -204,7 +206,22 @@ export default function Home() {
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e as BeforeInstallPromptEvent); };
     window.addEventListener("beforeinstallprompt", handler);
-    if (window.matchMedia("(display-mode: standalone)").matches) setIsInstalled(true);
+
+    // iOS detection
+    const ua = window.navigator.userAgent;
+    const iOS = /iPad|iPhone|iPod/.test(ua) && !(window as Window & { MSStream?: unknown }).MSStream;
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+    if (isStandalone) setIsInstalled(true);
+    if (iOS && !isStandalone) {
+      setIsIOS(true);
+      // Show iOS install banner if not dismissed
+      if (!localStorage.getItem("email-blaster-ios-dismissed")) {
+        setShowIOSInstall(true);
+      }
+    }
+
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
@@ -576,10 +593,13 @@ export default function Home() {
           {!isInstalled && installPrompt && (
             <button onClick={handleInstall} className="btn-primary text-sm flex items-center gap-1.5"><Download size={14} />Install</button>
           )}
+          {!isInstalled && isIOS && !showIOSInstall && (
+            <button onClick={() => setShowIOSInstall(true)} className="btn-primary text-sm flex items-center gap-1.5"><Smartphone size={14} />Install</button>
+          )}
         </div>
       </div>
 
-      {/* PWA Banner */}
+      {/* PWA Banner (Chrome / Edge / Android) */}
       {!isInstalled && installPrompt && (
         <div className="install-banner mb-6">
           <div className="flex items-center gap-3">
@@ -590,6 +610,55 @@ export default function Home() {
             </div>
           </div>
           <button onClick={handleInstall} className="btn-primary text-sm">Install</button>
+        </div>
+      )}
+
+      {/* iOS Install Banner */}
+      {isIOS && !isInstalled && showIOSInstall && (
+        <div className="glass-card mb-6 !border-violet-500/30 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-violet-500/10 via-indigo-500/10 to-purple-500/10 pointer-events-none" />
+          <button
+            onClick={() => { setShowIOSInstall(false); localStorage.setItem("email-blaster-ios-dismissed", "1"); }}
+            className="absolute top-3 right-3 text-slate-500 hover:text-slate-300 z-10"
+          >
+            <X size={16} />
+          </button>
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+                <Smartphone size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">Install on iPhone</h3>
+                <p className="text-[11px] text-slate-400">Add to Home Screen for full app experience</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+              {[
+                { num: 1, icon: Share, text: "Tap the Share button", desc: "in Safari toolbar (bottom)" },
+                { num: 2, icon: Plus, text: "Scroll down & tap", desc: "\"Add to Home Screen\"" },
+                { num: 3, icon: Check, text: "Tap \"Add\"", desc: "in the top-right corner" },
+              ].map((s) => {
+                const Icon = s.icon;
+                return (
+                  <div key={s.num} className="bg-slate-800/40 rounded-lg p-3 border border-violet-500/15">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="w-5 h-5 rounded-md bg-violet-500/20 text-violet-300 text-[10px] font-bold flex items-center justify-center">{s.num}</span>
+                      <Icon size={14} className="text-violet-400" />
+                    </div>
+                    <p className="text-xs font-semibold text-white">{s.text}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{s.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="text-[10px] text-slate-500 flex items-center gap-1">
+              <Zap size={10} className="text-amber-400" />
+              Works offline, sends notifications, and feels like a native app.
+            </p>
+          </div>
         </div>
       )}
 

@@ -1,18 +1,27 @@
 "use client";
-import { useRef } from "react";
-import { Play, Pause, SkipForward, Heart } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Play, Pause, SkipForward, Heart, ChevronUp } from "lucide-react";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useLibrary } from "@/contexts/LibraryContext";
 import { useToast } from "@/contexts/ToastContext";
 import { artistsName, decodeHtml, pickImage } from "@/lib/utils";
+import { extractDominantColor } from "@/lib/colorExtract";
 
 export function MiniPlayer() {
   const { currentSong, isPlaying, togglePlay, next, prev, progress, expanded, setExpanded } = usePlayer();
   const { isLiked, toggleLike } = useLibrary();
   const { toast } = useToast();
+  const [bg, setBg] = useState("rgba(40,40,40,1)");
   const startX = useRef(0);
   const startY = useRef(0);
   const swiped = useRef(false);
+
+  useEffect(() => {
+    if (!currentSong) return;
+    extractDominantColor(pickImage(currentSong.image, "med")).then((hex) => {
+      setBg(hex);
+    });
+  }, [currentSong?.id]);
 
   if (!currentSong || expanded) return null;
   const liked = isLiked(currentSong.id);
@@ -38,19 +47,26 @@ export function MiniPlayer() {
       style={{ bottom: "calc(env(safe-area-inset-bottom) + 56px)" }}
     >
       <div
-        className="bg-[#282828] rounded-xl shadow-2xl overflow-hidden cursor-pointer hover:bg-[#333] transition md:rounded-xl"
-        onClick={(e) => { if (!swiped.current) setExpanded(true); }}
+        className="rounded-xl shadow-2xl overflow-hidden cursor-pointer transition-all"
+        style={{
+          background: `linear-gradient(135deg, ${bg} 0%, #1a1a1a 75%)`,
+          boxShadow: "0 12px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)",
+        }}
+        onClick={() => { if (!swiped.current) setExpanded(true); }}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-        <div className="h-0.5 bg-white/10 relative">
-          <div className="absolute top-0 left-0 h-full bg-accent transition-all" style={{ width: `${progress}%` }} />
+        <div className="h-1 bg-white/10 relative overflow-hidden">
+          <div className="absolute top-0 left-0 h-full bg-accent transition-all duration-300" style={{ width: `${progress}%`, boxShadow: "0 0 8px rgba(var(--accent-rgb), 0.6)" }} />
         </div>
-        <div className="flex items-center gap-3 p-2 md:p-3">
-          <img src={pickImage(currentSong.image, "med")} alt="" className="w-12 h-12 md:w-14 md:h-14 rounded-md object-cover flex-shrink-0" />
+        <div className="flex items-center gap-3 p-2.5 md:p-3">
+          <div className="relative">
+            <img src={pickImage(currentSong.image, "med")} alt="" className="w-12 h-12 md:w-14 md:h-14 rounded-md object-cover flex-shrink-0 shadow-lg" />
+            <ChevronUp className="absolute -top-1 -right-1 w-3.5 h-3.5 text-white/60 md:hidden" />
+          </div>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm line-clamp-1">{decodeHtml(currentSong.name)}</div>
-            <div className="text-xs text-secondary line-clamp-1">{decodeHtml(artistsName(currentSong))}</div>
+            <div className="font-semibold text-sm line-clamp-1 text-white">{decodeHtml(currentSong.name)}</div>
+            <div className="text-xs text-white/70 line-clamp-1 mt-0.5">{decodeHtml(artistsName(currentSong))}</div>
           </div>
           <button
             onClick={(e) => {
@@ -61,12 +77,12 @@ export function MiniPlayer() {
             className="p-2 hidden sm:block"
             aria-label="Like"
           >
-            <Heart className={`w-5 h-5 ${liked ? "fill-accent text-accent scale-bounce" : "text-secondary hover:text-white"}`} />
+            <Heart className={`w-5 h-5 ${liked ? "fill-accent text-accent scale-bounce" : "text-white/70 hover:text-white"}`} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="p-2 text-white hover:scale-110 transition" aria-label="Play/Pause">
-            {isPlaying ? <Pause className="w-6 h-6 fill-white" /> : <Play className="w-6 h-6 fill-white" />}
+          <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="p-2 text-white" aria-label="Play/Pause">
+            {isPlaying ? <Pause className="w-7 h-7 fill-white" /> : <Play className="w-7 h-7 fill-white ml-0.5" />}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); next(); }} className="p-2 text-secondary hover:text-white" aria-label="Next">
+          <button onClick={(e) => { e.stopPropagation(); next(); }} className="p-2 text-white/80 hover:text-white hidden sm:block" aria-label="Next">
             <SkipForward className="w-5 h-5" />
           </button>
         </div>
