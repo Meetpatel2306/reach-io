@@ -12,7 +12,7 @@ import { usePlayer } from "@/contexts/PlayerContext";
 import { decodeHtml, pickImage, artistsName } from "@/lib/utils";
 import { rankSongs } from "@/lib/rank";
 import { cached, TTL } from "@/lib/cache";
-import { smartSearch } from "@/lib/smartSearch";
+import { smartSearchFast, enrichSearch, peekSearch } from "@/lib/smartSearch";
 import { searchByLyric } from "@/lib/lyricSearch";
 import { SongRow } from "@/components/SongRow";
 import { AlbumCard } from "@/components/AlbumCard";
@@ -65,21 +65,33 @@ function SearchInner() {
   useEffect(() => {
     if (!debounced.trim()) {
       setSongs([]); setAlbums([]); setArtists([]); setPlaylists([]); setHasMore(false); setError(null);
+      setLyricFoundIds([]);
       return;
     }
-    setLoading(true);
+    let cancelled = false;
+    // 0) If we have a fully-cached bundle, render it INSTANTLY (no spinner).
+    const cachedBundle = peekSearch(debounced);
+    if (cachedBundle) {
+      setSongs(cachedBundle.songs);
+      setAlbums(cachedBundle.albums);
+      setArtists(cachedBundle.artists);
+      setPlaylists(cachedBundle.playlists);
+      setLyricFoundIds(cachedBundle.lyricFound || []);
+      setHasMore(cachedBundle.songs.length >= 30);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     setPage(0);
-    // smartSearch fans out multiple query variants + global topQuery, merges
-    // and ranks. Bundle is cached for 1 day so repeat searches hit zero network.
-    smartSearch(debounced).then((bundle) => {
+
+    // 1) FAST phase — 4 parallel calls, ~200ms when API is healthy
+    smartSearchFast(debounced).then((bundle) => {
+      if (cancelled) return;
       const empty = bundle.songs.length === 0 && bundle.albums.length === 0 && bundle.artists.length === 0 && bundle.playlists.length === 0;
       if (empty) {
-        // Distinguish API down vs no results — try a 1-shot probe
-        api.searchSongs("a", 0, 1).then(() => {
-          // API up, just no results for this query
-        }).catch(() => {
-          setError("Couldn't reach the music API. Check Settings → About → API Mirror.");
+        api.searchSongs("a", 0, 1).then(() => {}).catch(() => {
+          if (!cancelled) setError("Couldn't reach the music API. Check Settings → About → API Mirror.");
         });
       }
       setSongs(bundle.songs);
@@ -89,13 +101,25 @@ function SearchInner() {
       setLyricFoundIds(bundle.lyricFound || []);
       setHasMore(bundle.songs.length >= 30);
       setLoading(false);
+
+      // 2) ENRICH phase — fires lyrics/album-expansion/YT in background
+      // and updates the songs list as each source lands.
+      enrichSearch(debounced, bundle, (next) => {
+        if (cancelled) return;
+        setSongs(next.songs);
+        setLyricFoundIds(next.lyricFound || []);
+      });
     }).catch(() => {
+      if (cancelled) return;
       setError("Search failed. Try again or switch API mirror in Settings → About.");
       setLoading(false);
     });
-    // Lyric search runs in parallel — surfaces matches in the "Lyrics" tab
+
+    // Dedicated Lyrics tab still gets its own LRCLIB query for snippet display
     cached(`lyric-search:${debounced.toLowerCase()}`, TTL.search, () => searchByLyric(debounced, 12))
-      .then(setLyricMatches).catch(() => setLyricMatches([]));
+      .then((m) => { if (!cancelled) setLyricMatches(m); }).catch(() => { if (!cancelled) setLyricMatches([]); });
+
+    return () => { cancelled = true; };
   }, [debounced]);
 
   function submit(q: string) {

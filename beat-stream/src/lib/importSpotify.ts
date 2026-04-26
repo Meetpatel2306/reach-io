@@ -9,7 +9,7 @@
 // "embed.spotify.com" page which is freely fetchable. If the user's network
 // blocks Spotify entirely we fall back to a manual paste flow.
 
-import { smartSearch } from "./smartSearch";
+import { smartSearchFast } from "./smartSearch";
 import { playlists } from "./storage";
 import type { Song } from "./types";
 
@@ -46,7 +46,7 @@ export async function importSpotifyPlaylist(url: string): Promise<{ playlistId: 
   const p = playlists.create(title, "Imported from Spotify");
   let matched = 0;
   for (const t of tracks) {
-    const bundle = await smartSearch(`${t.name} ${t.artist}`).catch(() => null);
+    const bundle = await smartSearchFast(`${t.name} ${t.artist}`).catch(() => null);
     const best = bundle?.songs?.[0];
     if (best) {
       playlists.addSong(p.id, best.id);

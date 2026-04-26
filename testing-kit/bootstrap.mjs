@@ -133,25 +133,54 @@ function bootstrapNode(target, projectDir, info, sharedUsedPorts) {
     `});\n`;
   writeFileMaybe(playwrightConfigPath, pwBody, 'playwright.config.ts');
 
-  // 4. tests/ + e2e/ starter files
+  // 4. tests/ + e2e/ — copy framework-appropriate templates
   const testsDir = join(projectDir, 'tests');
   const e2eDir = join(projectDir, 'e2e');
-  if (!existsSync(testsDir)) {
-    if (flags.dryRun) log(`[dry-run] would create tests/starter.test.ts`);
-    else {
-      mkdirSync(testsDir, { recursive: true });
-      copyFileSync(join(KIT_DIR, 'templates/unit.test.template.ts'), join(testsDir, 'starter.test.ts'));
-      log(`created tests/starter.test.ts`);
-    }
+
+  // Unit/component templates that apply to every Node project (React + non-React)
+  const unitTemplates = [
+    ['unit.test.template.ts', 'starter.test.ts'],
+    ['async.test.template.ts', 'async.test.ts'],
+    ['parametrized.test.template.ts', 'parametrized.test.ts'],
+    ['network-mock.test.template.ts', 'network-mock.test.ts'],
+  ];
+  // Templates that need React
+  const reactTemplates = [
+    ['component.test.template.tsx', 'components.test.tsx'],
+    ['hook.test.template.tsx', 'hooks.test.tsx'],
+    ['form.test.template.tsx', 'form.test.tsx'],
+    ['error-boundary.test.template.tsx', 'error-boundary.test.tsx'],
+    ['snapshot.test.template.tsx', 'snapshot.test.tsx'],
+  ];
+  // Templates that fit a Next.js / API-route project
+  const nextTemplates = [
+    ['api-route.test.template.ts', 'api-route.test.ts'],
+    ['store.test.template.ts', 'store.test.ts'],
+  ];
+
+  // E2E templates
+  const e2eTemplates = [
+    ['e2e.smoke.template.spec.ts', 'starter.spec.ts'],
+    ['e2e.auth.template.spec.ts', 'auth.spec.ts'],
+    ['e2e.form.template.spec.ts', 'form.spec.ts'],
+    ['e2e.a11y.template.spec.ts', 'a11y.spec.ts'],
+    ['e2e.persistence.template.spec.ts', 'persistence.spec.ts'],
+    ['e2e.keyboard.template.spec.ts', 'keyboard.spec.ts'],
+    ['e2e.mobile.template.spec.ts', 'mobile.spec.ts'],
+    ['e2e.upload.template.spec.ts', 'upload.spec.ts'],
+  ];
+
+  ensureDir(testsDir);
+  for (const [src, dest] of unitTemplates) copyTemplate(testsDir, src, dest);
+  if (info.hasReact) {
+    for (const [src, dest] of reactTemplates) copyTemplate(testsDir, src, dest);
   }
-  if (!existsSync(e2eDir)) {
-    if (flags.dryRun) log(`[dry-run] would create e2e/starter.spec.ts`);
-    else {
-      mkdirSync(e2eDir, { recursive: true });
-      copyFileSync(join(KIT_DIR, 'templates/e2e.smoke.template.spec.ts'), join(e2eDir, 'starter.spec.ts'));
-      log(`created e2e/starter.spec.ts`);
-    }
+  if (info.framework === 'next') {
+    for (const [src, dest] of nextTemplates) copyTemplate(testsDir, src, dest);
   }
+
+  ensureDir(e2eDir);
+  for (const [src, dest] of e2eTemplates) copyTemplate(e2eDir, src, dest);
 
   // 5. Patch package.json scripts
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
@@ -200,41 +229,42 @@ function bootstrapPython(target, projectDir, info) {
   const pytestIni = readFile(join(KIT_DIR, 'configs/pytest.ini'));
   writeFileMaybe(pytestIniPath, pytestIni, 'pytest.ini');
 
-  // 3. tests/ folder + conftest + starter
+  // 3. tests/ folder + conftest + a battery of templates
   const testsDir = join(projectDir, 'tests');
-  if (!existsSync(testsDir)) {
-    if (flags.dryRun) log(`[dry-run] would create tests/`);
-    else {
-      mkdirSync(testsDir, { recursive: true });
-      log(`created tests/`);
-    }
-  }
+  ensureDir(testsDir);
 
   const conftestPath = join(testsDir, 'conftest.py');
   if (!existsSync(conftestPath)) {
-    const body = readFile(join(KIT_DIR, 'setup/conftest.py'));
-    writeFileMaybe(conftestPath, body, 'tests/conftest.py');
+    writeFileMaybe(conftestPath, readFile(join(KIT_DIR, 'setup/conftest.py')), 'tests/conftest.py');
   }
 
-  const starter = join(testsDir, 'test_starter.py');
-  if (!existsSync(starter)) {
-    if (flags.dryRun) log(`[dry-run] would create tests/test_starter.py`);
-    else {
-      copyFileSync(join(KIT_DIR, 'templates/unit.test.template.py'), starter);
-      log(`created tests/test_starter.py`);
-    }
-  }
+  // Templates that apply to every Python project
+  const baseTemplates = [
+    ['unit.test.template.py', 'test_starter.py'],
+    ['test_async.template.py', 'test_async.py'],
+    ['test_mock.template.py', 'test_mock.py'],
+    ['test_parametrized.template.py', 'test_parametrized.py'],
+  ];
+  // Framework-specific templates
+  const fwTemplates = {
+    fastapi: [
+      ['api.test.template.py', 'test_api_starter.py'],
+      ['test_pydantic.template.py', 'test_pydantic.py'],
+      ['test_db.template.py', 'test_db.py'],
+    ],
+    flask: [
+      ['test_flask.template.py', 'test_flask_app.py'],
+      ['test_db.template.py', 'test_db.py'],
+    ],
+    django: [
+      ['test_db.template.py', 'test_db.py'],
+    ],
+    streamlit: [],
+    python: [],
+  };
 
-  if (info.framework === 'fastapi') {
-    const apiTest = join(testsDir, 'test_api_starter.py');
-    if (!existsSync(apiTest)) {
-      if (flags.dryRun) log(`[dry-run] would create tests/test_api_starter.py`);
-      else {
-        copyFileSync(join(KIT_DIR, 'templates/api.test.template.py'), apiTest);
-        log(`created tests/test_api_starter.py`);
-      }
-    }
-  }
+  for (const [src, dest] of baseTemplates) copyTemplate(testsDir, src, dest);
+  for (const [src, dest] of (fwTemplates[info.framework] ?? [])) copyTemplate(testsDir, src, dest);
 
   log(`✓ ${target}: ready (pytest, framework ${info.framework})`);
 }
@@ -256,6 +286,26 @@ function writeFileMaybe(path, content, label) {
 
 function readFile(path) {
   return readFileSync(path, 'utf8');
+}
+
+function ensureDir(dir) {
+  if (existsSync(dir)) return;
+  if (flags.dryRun) { log(`[dry-run] would create ${relative(REPO_ROOT, dir)}/`); return; }
+  mkdirSync(dir, { recursive: true });
+  log(`created ${relative(REPO_ROOT, dir)}/`);
+}
+
+function copyTemplate(destDir, srcName, destName) {
+  const dest = join(destDir, destName);
+  if (existsSync(dest)) return; // idempotent — never overwrite a user-edited test
+  const src = join(KIT_DIR, 'templates', srcName);
+  if (!existsSync(src)) { warn(`template missing: ${srcName}`); return; }
+  if (flags.dryRun) {
+    log(`[dry-run] would copy ${srcName} → ${relative(REPO_ROOT, dest)}`);
+    return;
+  }
+  copyFileSync(src, dest);
+  log(`created ${relative(REPO_ROOT, dest).replace(/\\/g, '/')}`);
 }
 
 function listProjects() {

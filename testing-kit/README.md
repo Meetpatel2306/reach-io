@@ -1,6 +1,6 @@
 # testing-kit
 
-Shared, **fully dynamic** testing kit for every project in this monorepo. One folder, one bootstrap command, every project gets the right pipeline for its stack — Vitest + Playwright for Node/React, pytest for Python.
+Shared, **fully dynamic** testing kit for every project in this monorepo. One folder, one bootstrap command, every project gets a comprehensive set of tests for its stack — Vitest + Playwright for Node/React, pytest for Python.
 
 The kit auto-detects everything per project: language, framework, source folder, path alias, and a **unique HTTP port** so multiple projects can run E2E in parallel without colliding.
 
@@ -10,56 +10,75 @@ The kit auto-detects everything per project: language, framework, source folder,
 testing-kit/
 ├── bootstrap.mjs              # one-command setup — fully dynamic
 ├── lib/
-│   └── detect.mjs             # language/framework/port detection
+│   └── detect.mjs             # language / framework / port / alias detection
 ├── configs/
-│   ├── vitest.config.ts       # createVitestConfig({ ... })  (auto-reads tsconfig paths)
+│   ├── vitest.config.ts       # createVitestConfig() — auto-reads tsconfig paths
 │   ├── playwright.config.ts   # createPlaywrightConfig({ ... })
-│   └── pytest.ini             # pytest defaults for Python projects
+│   └── pytest.ini             # pytest defaults (strict markers, asyncio auto)
 ├── setup/
-│   ├── test-setup.ts          # Notification + AudioContext + matchMedia + Canvas stubs
-│   └── conftest.py            # pytest fixtures (env isolation, fixed_now, tmp_workdir)
+│   ├── test-setup.ts          # 12+ jsdom stubs: matchMedia, Notification, AudioContext,
+│   │                          # Canvas, ResizeObserver, IntersectionObserver, IndexedDB,
+│   │                          # BroadcastChannel, clipboard, scrollTo, randomUUID, etc.
+│   └── conftest.py            # pytest fixtures: env isolation, fixed_now, tmp_workdir
 ├── helpers/
 │   ├── factories.ts           # nextId, isoOffset, buildMany, snapshotLengths, waitFor
-│   └── factories.py           # Python equivalents
-└── templates/
-    ├── unit.test.template.ts
-    ├── component.test.template.tsx
-    ├── e2e.smoke.template.spec.ts
-    ├── unit.test.template.py
-    └── api.test.template.py    # FastAPI TestClient pattern
+│   ├── network.ts             # mockFetch / sequencedFetch / jsonResponse
+│   ├── a11y.ts                # quickAxe — common a11y checks without axe-core
+│   ├── timing.ts              # withFakeTimers, until, deferred, freezeTime
+│   ├── factories.py           # Python equivalents of factories.ts
+│   ├── network.py             # patched_requests, fail_on, make_async_mock
+│   ├── db.py                  # sqlite_memory, seed, count, fetch_all
+│   └── mock.py                # patch_many, freeze_attr, call_log
+└── templates/                 # 21 ready-to-edit test templates
+    ├── unit.test.template.ts            ├── e2e.smoke.template.spec.ts
+    ├── component.test.template.tsx      ├── e2e.auth.template.spec.ts
+    ├── hook.test.template.tsx           ├── e2e.form.template.spec.ts
+    ├── store.test.template.ts           ├── e2e.a11y.template.spec.ts
+    ├── api-route.test.template.ts       ├── e2e.persistence.template.spec.ts
+    ├── async.test.template.ts           ├── e2e.keyboard.template.spec.ts
+    ├── form.test.template.tsx           ├── e2e.mobile.template.spec.ts
+    ├── error-boundary.test.template.tsx ├── e2e.upload.template.spec.ts
+    ├── snapshot.test.template.tsx       ├── unit.test.template.py
+    ├── network-mock.test.template.ts    ├── api.test.template.py
+    ├── parametrized.test.template.ts    ├── test_async.template.py
+    ├── test_mock.template.py            ├── test_parametrized.template.py
+    ├── test_pydantic.template.py        ├── test_flask.template.py
+    ├── test_db.template.py              └── test_hypothesis.template.py
 ```
 
 ## Quick start
 
-### Bootstrap a single project
-
 ```bash
+# Bootstrap a single project
 node testing-kit/bootstrap.mjs <project-folder>
-```
 
-### Bootstrap **every** project in the monorepo at once
-
-```bash
+# Bootstrap every project in the monorepo at once
 node testing-kit/bootstrap.mjs --all
-```
 
-### Preview without writing anything
-
-```bash
+# Preview without writing anything
 node testing-kit/bootstrap.mjs --all --dry-run
-```
 
-### Skip dependency install (just write configs)
-
-```bash
+# Skip dependency install (just write configs/templates)
 node testing-kit/bootstrap.mjs <project> --no-install
 ```
 
+## What the bootstrap copies — per framework
+
+| Project type            | tests/ gets…                                                                                              | e2e/ gets…                                                                  |
+|-------------------------|------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
+| Any Node                | `starter`, `async`, `parametrized`, `network-mock`                                                         | `starter`, `auth`, `form`, `a11y`, `persistence`, `keyboard`, `mobile`, `upload` |
+| + React                 | also `components`, `hooks`, `form`, `error-boundary`, `snapshot`                                           | (same)                                                                       |
+| + Next.js               | also `api-route`, `store`                                                                                  | (same)                                                                       |
+| Any Python              | `test_starter`, `test_async`, `test_mock`, `test_parametrized`, `conftest.py`                              | n/a                                                                          |
+| + FastAPI               | also `test_api_starter`, `test_pydantic`, `test_db`                                                        | n/a                                                                          |
+| + Flask                 | also `test_flask_app`, `test_db`                                                                           | n/a                                                                          |
+| + Django                | also `test_db`                                                                                             | n/a                                                                          |
+
+Every template is a *starter* — it has working demo code so the test runner is green out of the box. Replace the demo with your real imports as you build out the project.
+
 ## What "fully dynamic" means
 
-When you run the bootstrap, the kit detects per-project:
-
-| Aspect             | How it decides                                                                            |
+| Aspect             | How the kit decides                                                                       |
 |--------------------|--------------------------------------------------------------------------------------------|
 | **Language**        | `package.json` → Node, `requirements.txt` / `pyproject.toml` → Python                     |
 | **JS framework**    | `next` / `vite` / `@remix-run/react` / `react-scripts` / `astro` / `express` deps         |
@@ -71,67 +90,33 @@ When you run the bootstrap, the kit detects per-project:
 | **Test framework**  | Vitest + Playwright for Node, pytest (+ `pytest-asyncio`) for Python                      |
 | **React stubs**     | only loaded when `react` is a dep (skipped for plain-Node projects)                       |
 
-## What gets generated
-
-### For a Node project
-
-1. Installs `vitest`, `jsdom`, `@vitejs/plugin-react`, `@playwright/test` — and RTL only if React is detected
-2. Writes `vitest.config.ts` re-exporting the kit factory (with detected `srcAlias` + `srcRoot`)
-3. Writes `playwright.config.ts` with the auto-picked port and the right web-server command
-4. Creates `tests/starter.test.ts` and `e2e/starter.spec.ts` from templates
-5. Adds npm scripts: `test`, `test:watch`, `test:e2e`, `test:e2e:ui`, `test:all`, `typecheck`
-
-### For a Python project
-
-1. Installs `pytest`, `pytest-asyncio` (and `httpx` if FastAPI is detected)
-2. Writes `pytest.ini` with strict markers + asyncio auto-mode
-3. Creates `tests/conftest.py` (env isolation, `fixed_now`, `tmp_workdir` fixtures)
-4. Creates `tests/test_starter.py` from the unit template
-5. For FastAPI projects: also creates `tests/test_api_starter.py` (TestClient pattern)
-
-## Idempotent
-
-Re-running `bootstrap.mjs` on a project that's already been set up is safe — files that already exist are skipped, and only missing npm scripts are added. You can re-run after adding new projects to the monorepo without disturbing existing ones.
-
-## Manual integration
-
-If you don't want to use the bootstrap, just point at the kit factories:
-
-```ts
-// vitest.config.ts
-import { createVitestConfig } from '../testing-kit/configs/vitest.config';
-export default createVitestConfig();   // auto-detects everything
-```
-
-```ts
-// playwright.config.ts
-import { createPlaywrightConfig } from '../testing-kit/configs/playwright.config';
-export default createPlaywrightConfig({
-  port: 3101,
-  command: 'npx next start -p 3101',
-});
-```
-
-```ini
-# pytest.ini — copy from testing-kit/configs/pytest.ini
-```
-
 ## What the shared `setup/test-setup.ts` gives you for free (Node)
 
-- **`Notification` API stub** with `Notification.permission` controllable per-test, captures every notification fired in `Notification.instances`
-- **`AudioContext` / `webkitAudioContext` stub** so audio code doesn't blow up jsdom
-- **`matchMedia` stub** so `useMediaQuery` and theme detection work
-- **`HTMLCanvasElement.getContext` + `toDataURL` stub** so favicon/dynamic-icon code works
+Every Vitest test file inherits all of these without explicit imports:
+
+- **`Notification` API stub** — `Notification.permission` controllable per-test, captured in `Notification.instances`
+- **`AudioContext` / `webkitAudioContext` stub** — audio code doesn't blow up jsdom
+- **`matchMedia` stub** — `useMediaQuery` and theme detection work
+- **`HTMLCanvasElement` stub** — `getContext`, `toDataURL`, `toBlob`, full 2D API surface
+- **`ResizeObserver`, `IntersectionObserver`, `MutationObserver` stubs** — Radix UI, charts, virtualization, "in-view" hooks
+- **`scrollTo`, `scrollIntoView` stubs** — jsdom doesn't implement these natively
+- **`navigator.clipboard` stub** — capturable copies via `getClipboardCalls()`
+- **`indexedDB` minimal stub** — for richer behavior swap in `fake-indexeddb`
+- **`BroadcastChannel` stub** — service-worker-style cross-tab comms
+- **`URL.createObjectURL` / `revokeObjectURL`** — file uploads, blob preview
+- **`crypto.randomUUID` polyfill** — for older jsdom builds
 - **`localStorage` + `sessionStorage` cleared** before each test
-- **`vi.useRealTimers()`** restored after each test
+- **`vi.useRealTimers()`** + **`vi.restoreAllMocks()`** restored after each test
 - **`@testing-library/jest-dom/vitest`** matchers (`toBeInTheDocument`, `toHaveClass`, etc.)
 
 ## What `setup/conftest.py` gives you for free (Python)
 
-- **Env isolation** — each test runs with a clean `os.environ` overlay (`ENV=test`, `TZ=UTC`)
+Every pytest test inherits:
+
+- **Env isolation** — `os.environ` reset between tests, `ENV=test`, `TZ=UTC`
 - **`fixed_now`** fixture — stable `datetime` for time-dependent tests
-- **`tmp_workdir`** fixture — a temp dir auto-cd'd-into for the test
-- **`project_root`** fixture — `Path` to your project root
+- **`tmp_workdir`** fixture — temp dir auto-`chdir`'d into for the test
+- **`project_root`** fixture — `Path` to the project root
 - **Auto sys.path injection** — `from app.foo import bar` works without `pip install -e .`
 
 ## Helper utilities
@@ -140,23 +125,64 @@ export default createPlaywrightConfig({
 // Node — helpers/factories.ts
 import { nextId, isoOffset, FIXED_NOW, buildMany, cycle, snapshotLengths } from '../../testing-kit/helpers/factories';
 
-const tasks = buildMany(50, (i) => ({
-  id: nextId('task'),
-  title: `Task ${i}`,
-  scheduledAt: isoOffset(FIXED_NOW, i * 60_000),
-  priority: cycle(['low', 'medium', 'high', 'urgent'], i),
-}));
+// helpers/network.ts — quick fetch mocking without msw
+import { mockFetch, jsonResponse } from '../../testing-kit/helpers/network';
+const fetch = mockFetch();
+fetch.next({ id: 'u-1' });
+fetch.fail(new Error('offline'));
+fetch.restore();
+
+// helpers/timing.ts
+import { withFakeTimers, until, deferred, freezeTime } from '../../testing-kit/helpers/timing';
+const restore = freezeTime(new Date('2026-01-01'));
+// …
+restore();
+
+// helpers/a11y.ts — quick a11y checks on a rendered tree
+import { quickAxe } from '../../testing-kit/helpers/a11y';
+expect(quickAxe(container)).toEqual([]);   // no issues
 ```
 
 ```py
 # Python — helpers/factories.py
 from testing_kit.helpers.factories import next_id, FIXED_NOW, build_many, snapshot_lengths
 
-tasks = build_many(50, lambda i: {
-    "id": next_id("task"),
-    "title": f"Task {i}",
-})
+# helpers/network.py — patch external HTTP cleanly
+from testing_kit.helpers.network import patched_requests, json_response
+with patched_requests("app.api.requests.get", [json_response({"ok": True})]):
+    ...
+
+# helpers/db.py — fast sqlite scratch DBs
+from testing_kit.helpers.db import sqlite_memory, seed, count
+with sqlite_memory("CREATE TABLE x (id INT)") as db:
+    seed(db, "x", [{"id": 1}, {"id": 2}])
+    assert count(db, "x") == 2
+
+# helpers/mock.py — sugar over unittest.mock
+from testing_kit.helpers.mock import patch_many, freeze_attr, call_log
+with patch_many({"app.foo.bar": 1, "app.foo.baz": 2}) as mocks:
+    ...
 ```
+
+## Manual integration (if you skip the bootstrap)
+
+```ts
+// vitest.config.ts
+import { createVitestConfig } from '../testing-kit/configs/vitest.config';
+export default createVitestConfig();   // auto-detects everything
+
+// playwright.config.ts
+import { createPlaywrightConfig } from '../testing-kit/configs/playwright.config';
+export default createPlaywrightConfig({ port: 3101, command: 'npx next start -p 3101' });
+```
+
+```ini
+# pytest.ini — copy from testing-kit/configs/pytest.ini
+```
+
+## Idempotent
+
+Re-running `bootstrap.mjs` on a project that's already been set up is safe — files that already exist are skipped, and only missing npm scripts are added. You can re-run after adding new projects, or after the kit gains new templates, without disturbing existing tests.
 
 ## Project status (current monorepo)
 

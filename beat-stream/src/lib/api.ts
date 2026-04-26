@@ -10,11 +10,18 @@ const HOSTS = [
   "https://saavn.me",
 ];
 
-const TIMEOUT = 10_000;
+// Aggressive defaults: most JioSaavn calls return in <500ms when reachable.
+// 4s lets us bail and try the next mirror fast instead of stalling 30s on a
+// dead host (the previous 10s × 3 mirrors = 30s killed search performance).
+const TIMEOUT = 4_000;
 const TTL = 5 * 60 * 1000;
 const HOST_KEY = "bs-api-host";
+// Cooldown for hosts that just failed: skip them entirely for this many ms so
+// repeat searches don't try a known-dead mirror over and over.
+const HOST_FAIL_COOLDOWN = 60_000;
 
 const memCache = new Map<string, { data: unknown; ts: number }>();
+const hostFailedAt = new Map<string, number>();
 
 function preferredHost(): string {
   if (typeof window === "undefined") return HOSTS[0];
@@ -54,19 +61,25 @@ async function get<T>(path: string): Promise<T> {
   const cached = memCache.get(path);
   if (cached && Date.now() - cached.ts < TTL) return cached.data as T;
 
-  // Order hosts: preferred first, then the rest
+  // Order hosts: preferred first, then the rest. Skip hosts that recently
+  // failed unless ALL hosts are in cooldown (then we have to try anyway).
   const preferred = preferredHost();
-  const ordered = [preferred, ...HOSTS.filter((h) => h !== preferred)];
+  const now = Date.now();
+  let ordered = [preferred, ...HOSTS.filter((h) => h !== preferred)];
+  const filtered = ordered.filter((h) => (now - (hostFailedAt.get(h) || 0)) > HOST_FAIL_COOLDOWN);
+  if (filtered.length) ordered = filtered;
 
   let lastErr: unknown;
   for (const host of ordered) {
     try {
       const data = await tryHost<T>(host, path);
       memCache.set(path, { data, ts: Date.now() });
+      hostFailedAt.delete(host);
       if (host !== preferred) rememberHost(host);
       return data;
     } catch (e) {
       lastErr = e;
+      hostFailedAt.set(host, Date.now());
     }
   }
   throw lastErr;
