@@ -155,6 +155,13 @@ export default function Home() {
   // App auth session (login/register)
   const [authUser, setAuthUser] = useState<{ email: string; name: string; role: "admin" | "user" } | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Delete-account modal state
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [authReady, setAuthReady] = useState(false);
 
   // Persist state to localStorage whenever key values change
@@ -775,6 +782,14 @@ export default function Home() {
                     <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10">
                       <LogOut size={12} />Sign Out
                     </button>
+                    {authUser.email !== "meetpatel4384@gmail.com" && (
+                      <button
+                        onClick={() => { setShowUserMenu(false); setShowDeleteAccount(true); setDeletePassword(""); setDeleteConfirmText(""); setDeleteError(""); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] text-red-500/70 hover:bg-red-500/10 hover:text-red-400 border-t border-slate-700/30 mt-1 pt-2"
+                      >
+                        <Trash2 size={11} />Delete My Account
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -1484,6 +1499,98 @@ export default function Home() {
       </div>
 
       {/* Interactive Spotlight Tour */}
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteAccount && authUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(10px)" }}>
+          <div className="glass-card max-w-md w-full !border-red-500/30">
+            <div className="text-center mb-5">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-orange-500 mb-3 shadow-lg shadow-red-500/30">
+                <Trash2 size={26} className="text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Delete your account?</h2>
+              <p className="text-sm text-slate-400 mt-1">This permanently removes <span className="text-red-300 font-mono">{authUser.email}</span></p>
+            </div>
+
+            <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 text-xs text-slate-300 space-y-1.5 mb-5">
+              <p className="font-semibold text-red-300 mb-1">This will erase:</p>
+              <p>• Your account &amp; profile</p>
+              <p>• All your send history (server-side records)</p>
+              <p>• Your support tickets</p>
+              <p>• Saved drafts &amp; settings (this device)</p>
+              <p className="text-red-400/80 mt-2 font-medium">This cannot be undone.</p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-300 mb-1.5 block">Type <span className="font-mono text-red-300">DELETE</span> to confirm</label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  className="input-field"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-300 mb-1.5 block">Confirm with your password</label>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  placeholder="Your password"
+                  className="input-field"
+                />
+              </div>
+
+              {deleteError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-2.5 text-xs text-red-300">
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setShowDeleteAccount(false); setDeletePassword(""); setDeleteConfirmText(""); setDeleteError(""); }}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 text-sm font-semibold hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting || deleteConfirmText !== "DELETE" || !deletePassword}
+                  onClick={async () => {
+                    setDeleteError(""); setDeleting(true);
+                    try {
+                      const res = await fetch("/api/auth/delete-account", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ password: deletePassword }),
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        clearUserData();
+                        window.location.href = "/register";
+                      } else {
+                        setDeleteError(data.error || "Failed to delete account");
+                      }
+                    } catch {
+                      setDeleteError("Network error");
+                    }
+                    setDeleting(false);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 text-white text-sm font-semibold shadow-lg shadow-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  {deleting ? "Deleting..." : "Delete forever"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showTour && (() => {
         const step = tourSteps[tourStep];
         const Icon = step.icon;
