@@ -96,12 +96,19 @@ export const authAdapter: AuthAdapter = {
     });
   },
 
-  async promoteAdmin(_id) {
-    // Email-blaster doesn't currently expose promote/demote endpoints.
-    // No-op for now — kit's admin shows the buttons but they won't change role.
+  async promoteAdmin(id) {
+    await fetch("/api/admin/promote-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: id }),
+    });
   },
 
-  async demoteAdmin(_id) {
-    // Same as above — placeholder.
+  async demoteAdmin(id) {
+    await fetch("/api/admin/demote-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: id }),
+    });
   },
 };

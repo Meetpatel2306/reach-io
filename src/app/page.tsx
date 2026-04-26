@@ -544,17 +544,22 @@ export default function Home() {
       const text = ev.target?.result as string;
       const lines = text.split("\n").filter((l) => l.trim());
       const parsed: Recipient[] = [];
+      let skipped = 0;
+      const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
+        let candidate: Recipient | null = null;
         if (cols.length >= 2) {
-          if (csvFormat === "name,email") parsed.push({ name: cols[0], email: cols[1] });
-          else parsed.push({ name: cols[1], email: cols[0] });
+          if (csvFormat === "name,email") candidate = { name: cols[0], email: cols[1] };
+          else candidate = { name: cols[1], email: cols[0] };
         } else if (cols.length === 1 && cols[0].includes("@")) {
-          parsed.push({ name: "", email: cols[0] });
+          candidate = { name: "", email: cols[0] };
         }
+        if (candidate && isValidEmail(candidate.email)) parsed.push(candidate);
+        else if (candidate) skipped++;
       }
       setRecipients((prev) => [...prev, ...parsed]);
-      addLog(`${parsed.length} recipients from CSV`);
+      addLog(`${parsed.length} recipients from CSV${skipped ? ` (${skipped} skipped — invalid emails)` : ""}`);
     };
     reader.readAsText(file);
   };

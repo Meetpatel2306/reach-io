@@ -14,6 +14,15 @@ export async function POST(req: NextRequest) {
     if (!record) return NextResponse.json({ error: "Invalid or expired token" }, { status: 400 });
     if (Date.now() > record.expiresAt) {
       await kvDel(`reset:${token}`);
+      // Opportunistic cleanup: scan and delete other expired tokens too
+      try {
+        const { kvKeys } = await import("@/lib/storage");
+        const keys = await kvKeys("reset:*");
+        for (const k of keys) {
+          const r = await kvGet<ResetRecord>(k);
+          if (r && Date.now() > r.expiresAt) await kvDel(k);
+        }
+      } catch {}
       return NextResponse.json({ error: "Token has expired" }, { status: 400 });
     }
 

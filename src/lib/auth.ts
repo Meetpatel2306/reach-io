@@ -31,9 +31,23 @@ export interface SessionData {
 export const NEVER_EXPIRES = 365 * 24 * 60 * 60 * 1000 * 10;
 
 function getSessionOptions(maxAgeMs: number = NEVER_EXPIRES): SessionOptions {
-  const password = process.env.SESSION_SECRET || "dev-only-secret-min-32-chars-long-please-change!";
+  const password = process.env.SESSION_SECRET;
+  // In production, refuse to run with a missing or weak secret.
+  if (!password) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET environment variable is required in production. Sessions cannot be created securely without it.");
+    }
+    // Dev only — explicit warning
+    console.warn("⚠️  SESSION_SECRET not set — using insecure dev fallback. DO NOT deploy without setting this!");
+  }
+  if (password && password.length < 32) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SESSION_SECRET must be at least 32 characters in production.");
+    }
+    console.warn("⚠️  SESSION_SECRET is shorter than 32 chars — recommended minimum for security.");
+  }
   return {
-    password,
+    password: password || "dev-only-secret-min-32-chars-long-please-change!",
     cookieName: "eb_session",
     cookieOptions: {
       httpOnly: true,
