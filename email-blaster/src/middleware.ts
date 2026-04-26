@@ -18,6 +18,8 @@ const PUBLIC_PATHS = [
   "/api/config", // public config (no secrets)
   "/api/upload-resume", // optional: could require auth
   "/api/system-status", // public — shows config presence (no values)
+  "/privacy", // public legal page (Google OAuth verification)
+  "/terms", // public legal page
 ];
 
 export function middleware(req: NextRequest) {

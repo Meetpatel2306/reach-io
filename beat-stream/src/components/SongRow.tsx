@@ -118,7 +118,7 @@ export function SongRow({ song, index, queue, showAlbum = true }: { song: Song; 
         className={`p-2 transition ${liked ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         aria-label="Like"
       >
-        <Heart className={`w-4 h-4 ${liked ? "fill-red-500 text-red-500 scale-bounce" : "text-secondary hover:text-white"}`} />
+        <Heart className={`w-4 h-4 ${liked ? "fill-accent text-accent scale-bounce" : "text-secondary hover:text-white"}`} />
       </button>
       <span className="text-xs text-secondary tabular-nums w-12 text-right hidden sm:block">{fmtTime(dur)}</span>
       <div className="relative">
