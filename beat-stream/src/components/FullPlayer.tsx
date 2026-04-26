@@ -16,6 +16,7 @@ import { downloads, counts } from "@/lib/storage";
 import { extractDominantColor } from "@/lib/colorExtract";
 import { QueuePanel } from "./QueuePanel";
 import { LyricsPanel } from "./LyricsPanel";
+import { Seekbar } from "./Seekbar";
 import type { Quality } from "@/lib/types";
 
 export function FullPlayer() {
@@ -207,15 +208,13 @@ export function FullPlayer() {
             </div>
 
             <div className="no-drag">
-              <input
-                type="range" min={0} max={100} step={0.1}
-                value={player.progress}
-                onChange={(e) => player.seek(parseFloat(e.target.value))}
-                className="range range-accent w-full"
-                style={{ ["--val" as string]: `${player.progress}%` }}
-                aria-label="Seek"
+              <Seekbar
+                progress={player.progress}
+                buffered={player.duration ? player.buffered / player.duration : 0}
+                duration={player.duration}
+                onSeek={player.seek}
               />
-              <div className="flex justify-between text-[11px] text-white/60 tabular-nums mt-1.5">
+              <div className="flex justify-between text-[11px] text-white/60 tabular-nums mt-1">
                 <span>{fmtTime(player.currentTime)}</span>
                 <span>-{fmtTime(remaining)}</span>
               </div>

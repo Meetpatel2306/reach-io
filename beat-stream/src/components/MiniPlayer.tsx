@@ -8,7 +8,7 @@ import { artistsName, decodeHtml, pickImage } from "@/lib/utils";
 import { extractDominantColor } from "@/lib/colorExtract";
 
 export function MiniPlayer() {
-  const { currentSong, isPlaying, togglePlay, next, prev, progress, expanded, setExpanded } = usePlayer();
+  const { currentSong, isPlaying, togglePlay, next, prev, progress, buffered, duration, expanded, setExpanded } = usePlayer();
   const { isLiked, toggleLike } = useLibrary();
   const { toast } = useToast();
   const [bg, setBg] = useState("rgba(40,40,40,1)");
@@ -57,7 +57,16 @@ export function MiniPlayer() {
         onTouchEnd={onTouchEnd}
       >
         <div className="h-1 bg-white/10 relative overflow-hidden">
-          <div className="absolute top-0 left-0 h-full bg-accent transition-all duration-300" style={{ width: `${progress}%`, boxShadow: "0 0 8px rgba(var(--accent-rgb), 0.6)" }} />
+          {/* Buffered (lighter — Spotify-style "loaded ahead" indicator) */}
+          <div
+            className="absolute top-0 left-0 h-full bg-white/40 transition-all duration-300"
+            style={{ width: `${duration ? Math.min(100, (buffered / duration) * 100) : 0}%` }}
+          />
+          {/* Played (sits on top, accent color) */}
+          <div
+            className="absolute top-0 left-0 h-full bg-accent transition-all duration-300"
+            style={{ width: `${progress}%`, boxShadow: "0 0 8px rgba(var(--accent-rgb), 0.6)" }}
+          />
         </div>
         <div className="flex items-center gap-3 p-2.5 md:p-3">
           <div className="relative">

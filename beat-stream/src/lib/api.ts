@@ -107,6 +107,15 @@ export const api = {
       return data.lyrics || null;
     } catch { return null; }
   },
+  // Some saavn.dev mirrors expose a `/suggestions` endpoint for songs. We try
+  // it and treat any failure as "not available" — the recommender falls back
+  // to artist-based search.
+  getSongSuggestions: async (id: string, limit = 20): Promise<Song[]> => {
+    try {
+      const data = await get<Song[]>(`/api/songs/${id}/suggestions?limit=${limit}`);
+      return Array.isArray(data) ? data : [];
+    } catch { return []; }
+  },
 };
 
 export const API_HOSTS = HOSTS;

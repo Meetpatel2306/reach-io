@@ -11,7 +11,7 @@
 
 import { api } from "./api";
 import { cached, peek, TTL } from "./cache";
-import type { Song } from "./types";
+import type { Song, Quality } from "./types";
 import { pickImage, pickDownloadUrl } from "./utils";
 
 const inflight = new Set<string>();
@@ -65,12 +65,42 @@ export const prefetch = {
     img.onload = img.onerror = () => inflight.delete(`img:${url}`);
     img.src = url;
   },
-  /** Warm the SW audio cache for the next track (without storing in IndexedDB). */
+  /** Warm the browser's HTTP cache with the FULL audio file. Heavy. */
   audio(song: Song, quality: any) {
     const url = pickDownloadUrl(song, quality);
     if (!url || inflight.has(`au:${url}`)) return;
     inflight.add(`au:${url}`);
     enqueue(`au:${url}`, () => fetch(url, { method: "GET", mode: "cors" }).then(() => undefined).catch(() => undefined));
+  },
+  /**
+   * Fetch only the FIRST chunk of the audio file (1.5 MB ≈ 30-40 s at 320 kbps).
+   * The browser caches this chunk; when the audio element later requests this
+   * URL, the start plays instantly from cache while the rest streams normally.
+   *
+   * Way lighter than `audio()` — perfect for warming the next 5-6 queue items.
+   */
+  audioStart(url: string) {
+    if (!url || inflight.has(`au-start:${url}`)) return;
+    inflight.add(`au-start:${url}`);
+    enqueue(`au-start:${url}`, () =>
+      fetch(url, { headers: { Range: "bytes=0-1572863" }, mode: "cors", cache: "force-cache" })
+        .then(() => undefined)
+        .catch(() => undefined)
+    );
+  },
+  /** Combo: fetch song metadata (so we have downloadUrl), then fetch first chunk. */
+  songAndAudioStart(songId: string, quality: Quality) {
+    enqueue(`song-warmed:${songId}`, async () => {
+      try {
+        const data = await cached<Song[]>(`song:${songId}`, TTL.song, () => api.getSong(songId));
+        const full = Array.isArray(data) ? data[0] : (data as any);
+        if (!full?.downloadUrl?.length) return;
+        const url = pickDownloadUrl(full, quality);
+        if (url) {
+          await fetch(url, { headers: { Range: "bytes=0-1572863" }, mode: "cors", cache: "force-cache" }).catch(() => {});
+        }
+      } catch {}
+    });
   },
 };
 

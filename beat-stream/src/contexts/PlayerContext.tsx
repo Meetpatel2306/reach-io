@@ -8,6 +8,7 @@ import { audioCache } from "@/lib/audioCache";
 import { Equalizer } from "@/lib/equalizer";
 import { prefetch } from "@/lib/prefetch";
 import { cached, TTL } from "@/lib/cache";
+import { buildRelatedQueue } from "@/lib/related";
 import { useSettings } from "./SettingsContext";
 
 type Repeat = "off" | "all" | "one";
@@ -331,18 +332,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const idx = q.findIndex((x) => x.id === full.id);
         if (idx >= 0) q[idx] = full;
         const here = idx >= 0 ? idx : s.queueIndex;
-        // 1) Buffer the very-next track into the hidden audio element (gapless)
+        // 1) Fully buffer the very-next track via the hidden audio element (gapless)
         warmNext(q[here + 1]);
-        // 2) Prefetch metadata + images for the next 2 songs
-        for (let i = 1; i <= 2; i++) {
+        // 2) For the next 6 songs: warm metadata + image + first audio chunk
+        //    (≈1.5MB each, enough to start playback instantly when chosen)
+        for (let i = 1; i <= 6; i++) {
           const nxt = q[here + i];
-          if (nxt) {
-            prefetch.song(nxt.id);
-            prefetch.image(pickImage(nxt.image, "med"));
-            prefetch.image(pickImage(nxt.image, "high"));
-            if (nxt.album?.id) prefetch.album(nxt.album.id);
-            if (nxt.artists?.primary?.[0]?.id) prefetch.artist(nxt.artists.primary[0].id);
-          }
+          if (!nxt) break;
+          prefetch.song(nxt.id);
+          prefetch.image(pickImage(nxt.image, "med"));
+          prefetch.image(pickImage(nxt.image, "high"));
+          if (nxt.album?.id) prefetch.album(nxt.album.id);
+          if (nxt.artists?.primary?.[0]?.id) prefetch.artist(nxt.artists.primary[0].id);
+          // Skip i=1 (already fully preloaded by warmNext above)
+          if (i >= 2) prefetch.songAndAudioStart(nxt.id, settings.quality);
         }
         return { ...s, currentSong: full, queue: q, isBuffering: false };
       });

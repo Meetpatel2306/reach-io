@@ -7,12 +7,14 @@ import { artistsName, decodeHtml, fmtTime, pickImage } from "@/lib/utils";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useLibrary } from "@/contexts/LibraryContext";
 import { useToast } from "@/contexts/ToastContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { prefetch } from "@/lib/prefetch";
 import { SongMenu } from "./SongMenu";
 
 export function SongRow({ song, index, queue, showAlbum = true }: { song: Song; index?: number; queue?: Song[]; showAlbum?: boolean }) {
   const { currentSong, isPlaying, togglePlay, playSong, playList } = usePlayer();
   const { isLiked, toggleLike, downloadIds } = useLibrary();
+  const { settings } = useSettings();
   const { toast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -31,10 +33,12 @@ export function SongRow({ song, index, queue, showAlbum = true }: { song: Song; 
   return (
     <div
       onMouseEnter={() => {
-        prefetch.song(song.id);
+        // Warm audio so click-to-play is instant
+        prefetch.songAndAudioStart(song.id, settings.quality);
         if (song.album?.id) prefetch.album(song.album.id);
         if (song.artists?.primary?.[0]?.id) prefetch.artist(song.artists.primary[0].id);
       }}
+      onTouchStart={() => prefetch.songAndAudioStart(song.id, settings.quality)}
       className={`group flex items-center gap-3 px-2 py-2 rounded-md transition hover:bg-white/[0.06] ${isCurrent ? "bg-white/[0.04]" : ""}`}
     >
       <div className="w-8 text-center text-secondary text-sm relative flex items-center justify-center">

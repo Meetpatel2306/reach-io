@@ -3,10 +3,12 @@ import { Play, Pause } from "lucide-react";
 import type { Song } from "@/lib/types";
 import { artistsName, decodeHtml, pickImage } from "@/lib/utils";
 import { usePlayer } from "@/contexts/PlayerContext";
+import { useSettings } from "@/contexts/SettingsContext";
 import { prefetch, usePrefetchOnVisible } from "@/lib/prefetch";
 
 export function SongCard({ song, queue }: { song: Song; queue?: Song[] }) {
   const { playList, playSong, currentSong, isPlaying, togglePlay } = usePlayer();
+  const { settings } = useSettings();
   const isCurrent = currentSong?.id === song.id;
   const ref = usePrefetchOnVisible(() => prefetch.image(pickImage(song.image, "med")), [song.id]);
 
@@ -17,7 +19,7 @@ export function SongCard({ song, queue }: { song: Song; queue?: Song[] }) {
   }
 
   function preWarm() {
-    prefetch.song(song.id);
+    prefetch.songAndAudioStart(song.id, settings.quality);
     if (song.album?.id) prefetch.album(song.album.id);
     if (song.artists?.primary?.[0]?.id) prefetch.artist(song.artists.primary[0].id);
   }
