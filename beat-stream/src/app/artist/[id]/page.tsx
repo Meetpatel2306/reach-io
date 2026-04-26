@@ -12,6 +12,7 @@ import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { songCache } from "@/lib/storage";
 import { useCached, cached, TTL } from "@/lib/cache";
+import { ytSearchSongs } from "@/lib/youtubeMusic";
 
 // Initial fetch grabs 5 pages of songs (~50 tracks) and 3 pages of albums (~30
 // albums) in parallel — Saavn paginates aggressively so a single page only
@@ -28,7 +29,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
     albums: Album[];
     songTotal: number;
     albumTotal: number;
-  }>(`artist-deep:${id}`, TTL.artist, async () => {
+  }>(`artist-deep:v2:${id}`, TTL.artist, async () => {
     const [a, songPages, albumPages] = await Promise.all([
       api.getArtist(id),
       Promise.all(INITIAL_SONG_PAGES.map((p) =>
@@ -44,6 +45,33 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
     const songMap = new Map<string, Song>();
     if (a.topSongs) for (const s of a.topSongs) songMap.set(s.id, s);
     for (const page of songPages) for (const s of (page.songs || [])) songMap.set(s.id, s);
+
+    // Foreign / Western artists have shallow Saavn catalogs (Ed Sheeran has
+    // ~30 songs on Saavn vs 200+ for Indian artists). Also pull from YouTube
+    // Music to bulk out the catalog. We only run this if Saavn returned a
+    // thin list — for big Indian artists it'd just add noise.
+    const SAAVN_THIN = 30;
+    if (songMap.size < SAAVN_THIN && a.name) {
+      try {
+        const yt = await cached(`yt-artist:${a.name.toLowerCase()}`, TTL.artist,
+          () => ytSearchSongs(`${a.name} songs`, 40));
+        // Filter to songs where the primary artist matches this artist (case-insensitive substring),
+        // so unrelated YT hits don't pollute the page.
+        const aName = a.name.toLowerCase().trim();
+        for (const s of yt) {
+          const primary = s.artists?.primary?.[0]?.name?.toLowerCase() || "";
+          if (!primary.includes(aName) && !aName.includes(primary)) continue;
+          // Dedupe by normalized song name + artist (YT may have a different id from any Saavn equivalent)
+          const key = `${(s.name || "").toLowerCase().trim()}::${primary}`;
+          const dup = Array.from(songMap.values()).some((existing) => {
+            const ek = `${(existing.name || "").toLowerCase().trim()}::${(existing.artists?.primary?.[0]?.name || "").toLowerCase().trim()}`;
+            return ek === key;
+          });
+          if (!dup) songMap.set(s.id, s);
+        }
+      } catch {}
+    }
+
     // Same for albums
     const albumMap = new Map<string, Album>();
     if (a.topAlbums) for (const al of a.topAlbums) albumMap.set(al.id, al);
@@ -78,12 +106,20 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
     setAlbumCursor(INITIAL_ALBUM_PAGES.length);
   }, [id]);
 
+  // Merge all loaded pages, dedupe by id, then sort by global play count
+  // (descending) so the most-listened tracks land at the top regardless of
+  // which API page they came from.
   const songs = (() => {
     const seen = new Set<string>();
     const out: Song[] = [];
     for (const s of [...initialSongs, ...extraSongs]) {
       if (s?.id && !seen.has(s.id)) { seen.add(s.id); out.push(s); }
     }
+    out.sort((a, b) => {
+      const pa = Number((a as any).playCount) || 0;
+      const pb = Number((b as any).playCount) || 0;
+      return pb - pa;
+    });
     return out;
   })();
 
@@ -111,7 +147,24 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
       cached(`artist-songs:${id}:${p}`, TTL.artist, () => api.getArtistSongs(id, p))
         .catch(() => ({ songs: [] as Song[], total: 0 }))
     ));
-    const newOnes = results.flatMap((r) => r.songs || []);
+    let newOnes = results.flatMap((r) => r.songs || []);
+
+    // If Saavn is tapped out, pull more from YouTube Music so foreign-artist
+    // pages keep growing instead of dead-ending.
+    if (newOnes.length === 0 && artist?.name) {
+      try {
+        const yt = await ytSearchSongs(`${artist.name} ${songCursor}`, 30);
+        const aName = artist.name.toLowerCase().trim();
+        const known = new Set(songs.map((s) => `${(s.name || "").toLowerCase().trim()}::${(s.artists?.primary?.[0]?.name || "").toLowerCase().trim()}`));
+        for (const s of yt) {
+          const primary = s.artists?.primary?.[0]?.name?.toLowerCase() || "";
+          if (!primary.includes(aName) && !aName.includes(primary)) continue;
+          const key = `${(s.name || "").toLowerCase().trim()}::${primary}`;
+          if (!known.has(key)) { known.add(key); newOnes.push(s); }
+        }
+      } catch {}
+    }
+
     setExtraSongs((prev) => [...prev, ...newOnes]);
     setSongCursor((c) => c + LOAD_MORE_PAGES_AT_A_TIME);
     setLoadingMoreSongs(false);
