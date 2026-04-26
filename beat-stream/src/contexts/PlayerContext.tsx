@@ -333,7 +333,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Hot-swap the audio source when the user changes streaming quality. We
   // refetch the current song's URL at the new bitrate, swap audio.src, and
   // resume from the same currentTime so playback continues without a jump.
-  // Skips on first mount (lastQualityRef is the same as settings.quality).
+  // ensureFullSong is referenced via a ref to dodge the "used before
+  // declaration" error since it's defined further down in this component.
+  const ensureFullSongRef = useRef<((song: Song, forceRefresh?: boolean) => Promise<Song>) | null>(null);
   const lastQualityRef = useRef(settings.quality);
   useEffect(() => {
     if (settings.quality === lastQualityRef.current) return;
@@ -341,10 +343,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const a = audioRef.current;
     const cur = stateRef.current.currentSong;
-    if (!a || !cur || !a.src) return;
+    const ensureFn = ensureFullSongRef.current;
+    if (!a || !cur || !a.src || !ensureFn) return;
 
-    // Don't try to re-encode local files / iTunes proxied via YT — those
-    // already pick the only available stream.
+    // Local-file / iTunes-via-YT have only one stream — nothing to swap.
     if (cur.id?.startsWith("local_")) return;
 
     const wasAt = a.currentTime;
@@ -352,11 +354,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const fresh = await ensureFullSong(cur, true);
+        const fresh = await ensureFn(cur, true);
         const url = pickDownloadUrl(fresh, settings.quality);
-        if (!url) return;
-        // If the new URL is identical to what's already loaded, nothing to do
-        if (url === a.src) return;
+        if (!url || url === a.src) return;
         a.src = url;
         a.load();
         const onMeta = () => {
@@ -367,9 +367,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         a.addEventListener("loadedmetadata", onMeta);
       } catch {}
     })();
-    // Also bust the preloaded next-song so it re-fetches at new quality
+    // Bust the next-song preload so it re-fetches at new quality
     preloadedSongIdRef.current = null;
-  }, [settings.quality, ensureFullSong]);
+  }, [settings.quality]);
 
   function startSilent() {
     const sa = silentRef.current;
@@ -469,6 +469,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (cachedSong?.downloadUrl?.length) return cachedSong;
     return song;
   }, []);
+
+  // Expose ensureFullSong to long-lived effects (declared earlier in the file)
+  useEffect(() => { ensureFullSongRef.current = ensureFullSong; }, [ensureFullSong]);
 
   const isAllowed = useCallback((song: Song): boolean => {
     if (blockedSongs.list().includes(song.id)) return false;

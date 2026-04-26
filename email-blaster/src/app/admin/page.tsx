@@ -457,7 +457,11 @@ export default function AdminPage() {
             </div>
             <select className="input-field !w-auto" value={filterUser} onChange={(e) => setFilterUser(e.target.value)}>
               <option value="all">All Users</option>
-              {users.map((u) => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
+              {users.map((u) => (
+                <option key={u.email} value={u.email}>
+                  {u.name ? `${u.name} (${u.email})` : u.email}
+                </option>
+              ))}
             </select>
             <select className="input-field !w-auto" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}>
               <option value="all">All Status</option>
@@ -572,13 +576,42 @@ export default function AdminPage() {
       {/* SUPPORT TAB */}
       {activeTab === "support" && (
         <div className="space-y-3">
-          {tickets.length === 0 ? (
-            <div className="glass-card text-center py-12">
-              <MessageSquare size={48} className="text-slate-700 mx-auto mb-4" />
-              <p className="text-slate-400">No support tickets yet.</p>
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input className="input-field pl-10" placeholder="Search subject, message, user..." value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-          ) : (
-            tickets.map((t) => {
+            <select className="input-field !w-auto" value={filterUser} onChange={(e) => setFilterUser(e.target.value)}>
+              <option value="all">All Users</option>
+              {users.map((u) => (
+                <option key={u.email} value={u.email}>
+                  {u.name ? `${u.name} (${u.email})` : u.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {(() => {
+            let filteredTickets = tickets;
+            if (filterUser !== "all") filteredTickets = filteredTickets.filter((t) => t.userEmail === filterUser);
+            if (search) {
+              const q = search.toLowerCase();
+              filteredTickets = filteredTickets.filter((t) =>
+                t.subject.toLowerCase().includes(q) ||
+                t.message.toLowerCase().includes(q) ||
+                t.userEmail.toLowerCase().includes(q) ||
+                t.userName.toLowerCase().includes(q) ||
+                t.replies.some((r) => r.message.toLowerCase().includes(q))
+              );
+            }
+            return filteredTickets.length === 0 ? (
+              <div className="glass-card text-center py-12">
+                <MessageSquare size={48} className="text-slate-700 mx-auto mb-4" />
+                <p className="text-slate-400">{tickets.length === 0 ? "No support tickets yet." : "No tickets match the current filters."}</p>
+              </div>
+            ) : (<>{
+            filteredTickets.map((t) => {
               const isOpen = t.status === "open";
               return (
                 <div key={t.id} className={`glass-card !p-0 overflow-hidden ${isOpen ? "!border-amber-500/30" : "opacity-80"}`}>
@@ -691,7 +724,8 @@ export default function AdminPage() {
                 </div>
               );
             })
-          )}
+            }</>);
+          })()}
         </div>
       )}
 
