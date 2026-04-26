@@ -1,14 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Email Blaster Pro",
+  title: "Reach.io",
   description: "Send bulk emails with resume attachments",
   manifest: "/manifest.json",
-  applicationName: "Email Blaster",
+  applicationName: "Reach.io",
   appleWebApp: {
     capable: true,
-    title: "Email Blaster",
+    title: "Reach.io",
     statusBarStyle: "black-translucent",
   },
   icons: {
@@ -44,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="Email Blaster" />
+        <meta name="apple-mobile-web-app-title" content="Reach.io" />
         <meta name="format-detection" content="telephone=no" />
 
         {/* Apple touch icons (multiple sizes for iOS home screen) */}
@@ -57,8 +58,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Mask icon for Safari pinned tabs */}
         <link rel="mask-icon" href="/icon-192.svg" color="#6366f1" />
       </head>
-      <body className="bg-slate-950 text-slate-100 min-h-screen">
-        {children}
+      <body className="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+        <div className="flex-1">{children}</div>
+        <Footer />
         <script
           dangerouslySetInnerHTML={{
             __html: `

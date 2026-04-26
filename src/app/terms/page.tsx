@@ -2,8 +2,8 @@ import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
 
 export const metadata = {
-  title: "Terms of Service — Email Blaster Pro",
-  description: "Terms governing the use of Email Blaster Pro",
+  title: "Terms of Service — Reach.io",
+  description: "Terms governing the use of Reach.io",
 };
 
 export default function TermsPage() {
@@ -29,7 +29,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-bold text-white mb-2">1. Acceptance of Terms</h2>
             <p>
-              By using Email Blaster Pro (&quot;the service&quot;), you agree to these Terms of Service.
+              By using Reach.io (&quot;the service&quot;), you agree to these Terms of Service.
               If you do not agree, do not use the service.
             </p>
           </section>
@@ -37,7 +37,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-bold text-white mb-2">2. Description of Service</h2>
             <p>
-              Email Blaster Pro is a tool that lets you send bulk emails from your own email account
+              Reach.io is a tool that lets you send bulk emails from your own email account
               (via SMTP or Gmail OAuth). The service does not provide its own email infrastructure —
               it uses credentials or OAuth tokens you provide.
             </p>

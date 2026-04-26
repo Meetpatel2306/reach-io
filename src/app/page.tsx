@@ -421,7 +421,7 @@ export default function Home() {
   }
   const tourSteps: TourStep[] = [
     {
-      title: "Welcome to Email Blaster Pro!",
+      title: "Welcome to Reach.io!",
       desc: "Send bulk emails with resume attachments — perfect for job applications. Let's walk through everything.",
       icon: Send, tip: null, type: "default",
     },
@@ -687,7 +687,7 @@ export default function Home() {
             <Send size={20} className="text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Email Blaster Pro</h1>
+            <h1 className="text-2xl font-bold text-white">Reach.io</h1>
             {smtpUser && <p className="text-slate-500 text-xs">{smtpUser}</p>}
           </div>
         </div>

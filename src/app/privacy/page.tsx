@@ -2,8 +2,8 @@ import Link from "next/link";
 import { ArrowLeft, Shield } from "lucide-react";
 
 export const metadata = {
-  title: "Privacy Policy — Email Blaster Pro",
-  description: "How Email Blaster Pro handles your data",
+  title: "Privacy Policy — Reach.io",
+  description: "How Reach.io handles your data",
 };
 
 export default function PrivacyPage() {
@@ -30,7 +30,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-bold text-white mb-2">1. Overview</h2>
             <p>
-              Email Blaster Pro (&quot;we&quot;, &quot;the app&quot;) is a tool that helps you send bulk emails from your own email account.
+              Reach.io (&quot;we&quot;, &quot;the app&quot;) is a tool that helps you send bulk emails from your own email account.
               This Privacy Policy explains what information we collect, how we use it, and your rights.
             </p>
           </section>
@@ -67,7 +67,7 @@ export default function PrivacyPage() {
               (email and name).
             </p>
             <p className="mt-2">
-              Email Blaster Pro&apos;s use of information received from Google APIs adheres to the
+              Reach.io&apos;s use of information received from Google APIs adheres to the
               {" "}<a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer" className="text-violet-400 hover:text-violet-300 underline">Google API Services User Data Policy</a>,
               including the Limited Use requirements.
             </p>

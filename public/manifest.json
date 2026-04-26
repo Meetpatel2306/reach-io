@@ -1,7 +1,7 @@
 {
-  "name": "Email Blaster Pro",
-  "short_name": "EmailBlaster",
-  "description": "Send bulk emails with resume attachments",
+  "name": "Reach.io",
+  "short_name": "Reach",
+  "description": "Send bulk emails with resume attachments — outreach made simple",
   "start_url": "/",
   "scope": "/",
   "id": "/",

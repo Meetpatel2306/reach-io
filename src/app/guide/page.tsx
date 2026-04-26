@@ -76,7 +76,7 @@ export default function GuidePage() {
               <BookIcon />
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">Get Started in Minutes</h1>
-            <p className="text-sm md:text-base text-slate-400 max-w-xl mx-auto">Everything you need to install Email Blaster Pro, get your App Password, and send your first email.</p>
+            <p className="text-sm md:text-base text-slate-400 max-w-xl mx-auto">Everything you need to install Reach.io, get your App Password, and send your first email.</p>
           </div>
         </div>
       </div>
@@ -138,7 +138,7 @@ export default function GuidePage() {
       <section id="install" className="mb-8 scroll-mt-20">
         <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
           <Smartphone size={20} className="text-violet-400" />
-          Install Email Blaster Pro
+          Install Reach.io
         </h2>
         <p className="text-sm text-slate-400 mb-4">Install as a native app for the best experience — works offline, faster loading, and feels like a real app.</p>
 
@@ -192,7 +192,7 @@ export default function GuidePage() {
                 { num: 1, icon: Mail, title: "Open this app in Safari", desc: "If you're not in Safari, copy the URL and paste in Safari", color: "from-slate-400 to-slate-200" },
                 { num: 2, icon: Share, title: "Tap the Share button", desc: "Square icon with arrow at bottom of Safari (or top on iPad)", color: "from-blue-500 to-cyan-500" },
                 { num: 3, icon: Plus, title: "Scroll down & tap \"Add to Home Screen\"", desc: "You may need to scroll past the app share row", color: "from-violet-500 to-indigo-500" },
-                { num: 4, icon: Check, title: "Tap \"Add\" in the top-right", desc: "App name will be \"Email Blaster\" — you can rename it here", color: "from-emerald-500 to-green-500" },
+                { num: 4, icon: Check, title: "Tap \"Add\" in the top-right", desc: "App name will be \"Reach.io\" — you can rename it here", color: "from-emerald-500 to-green-500" },
                 { num: 5, icon: Smartphone, title: "Find on Home Screen", desc: "Open it like any other app — full-screen, no Safari bars", color: "from-amber-500 to-orange-500" },
               ].map((s) => {
                 const Icon = s.icon;
@@ -439,9 +439,9 @@ export default function GuidePage() {
               {[
                 { title: "Enable 2-Step Verification", desc: "Google Account → Security → 2-Step Verification → Enable", link: "https://myaccount.google.com/security" },
                 { title: "Open App Passwords", desc: "Google Account → Security → 2-Step Verification → App passwords", link: "https://myaccount.google.com/apppasswords" },
-                { title: "Create App Password", desc: "Name it \"Email Blaster\" → Click Create" },
+                { title: "Create App Password", desc: "Name it \"Reach.io\" → Click Create" },
                 { title: "Copy the 16-character code", desc: "Shown only once! Example: abcd efgh ijkl mnop" },
-                { title: "Paste in Email Blaster", desc: "Settings (gear icon) → Email + App Password → Test → Save" },
+                { title: "Paste in Reach.io", desc: "Settings (gear icon) → Email + App Password → Test → Save" },
               ].map((s, i) => (
                 <div key={i} className="flex items-start gap-3 bg-slate-800/30 rounded-xl p-3 border border-slate-700/20">
                   <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500 to-orange-500 text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
@@ -497,7 +497,7 @@ export default function GuidePage() {
                 { title: "Enable 2-Step Verification", desc: "If not already enabled" },
                 { title: "Advanced Security Options", desc: "Click \"Advanced security options\"" },
                 { title: "Create App Password", desc: "Under \"App passwords\" → Create new" },
-                { title: "Copy & Paste", desc: "Copy password → Paste in Email Blaster Settings" },
+                { title: "Copy & Paste", desc: "Copy password → Paste in Reach.io Settings" },
               ].map((s, i) => (
                 <div key={i} className="flex items-start gap-3 bg-slate-800/30 rounded-xl p-3 border border-slate-700/20">
                   <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
@@ -547,8 +547,8 @@ export default function GuidePage() {
                 { title: "Open Account Security", desc: "Go to login.yahoo.com → Account Security" },
                 { title: "Enable 2-Step Verification", desc: "Turn on if not already enabled" },
                 { title: "Generate App Password", desc: "Click \"Generate app password\"" },
-                { title: "Name It", desc: "Select \"Other App\", name it \"Email Blaster\"" },
-                { title: "Copy & Paste", desc: "Copy password → Paste in Email Blaster Settings" },
+                { title: "Name It", desc: "Select \"Other App\", name it \"Reach.io\"" },
+                { title: "Copy & Paste", desc: "Copy password → Paste in Reach.io Settings" },
               ].map((s, i) => (
                 <div key={i} className="flex items-start gap-3 bg-slate-800/30 rounded-xl p-3 border border-slate-700/20">
                   <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 text-white text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
@@ -623,7 +623,7 @@ export default function GuidePage() {
       <section id="how-to" className="mb-8 scroll-mt-20">
         <div className="flex items-center gap-2 mb-4">
           <Layers size={20} className="text-violet-400" />
-          <h2 className="text-lg font-bold text-white">How to Use Email Blaster Pro</h2>
+          <h2 className="text-lg font-bold text-white">How to Use Reach.io</h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

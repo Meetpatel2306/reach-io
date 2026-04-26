@@ -106,6 +106,9 @@ export default function AdminPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [showClearAllData, setShowClearAllData] = useState(false);
+  const [clearAllConfirm, setClearAllConfirm] = useState("");
+  const [clearingData, setClearingData] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -164,6 +167,23 @@ export default function AdminPage() {
       });
       await loadAll();
     } catch {}
+  };
+
+  const handleClearAllData = async () => {
+    setClearingData(true);
+    try {
+      const res = await fetch("/api/admin/clear-data", { method: "POST" });
+      const data = await res.json();
+      setActionMsg(data.message || data.error || "");
+      if (res.ok) {
+        setShowClearAllData(false);
+        setClearAllConfirm("");
+        await loadAll();
+      }
+    } catch {
+      setActionMsg("Network error");
+    }
+    setClearingData(false);
   };
 
   const handlePromote = async (email: string) => {
@@ -469,6 +489,21 @@ export default function AdminPage() {
               )}
             </div>
           </div>
+
+          {/* Danger Zone */}
+          <div className="mt-6 glass-card !border-red-500/30">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertOctagon size={18} className="text-red-400" />
+              <h2 className="text-lg font-bold text-white">Danger Zone</h2>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">Permanently wipe all send batches and support tickets across all users. User accounts are preserved. Users will see a notice in their history page.</p>
+            <button
+              onClick={() => { setShowClearAllData(true); setClearAllConfirm(""); }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 text-sm font-semibold hover:bg-red-500/20 transition-all"
+            >
+              <Trash2 size={14} />Clear All Data (preserve accounts)
+            </button>
+          </div>
         </>
       )}
 
@@ -755,6 +790,63 @@ export default function AdminPage() {
             })
             }</>);
           })()}
+        </div>
+      )}
+
+      {/* Clear All Data confirmation modal */}
+      {showClearAllData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(10px)" }}>
+          <div className="glass-card max-w-md w-full !border-red-500/30">
+            <div className="text-center mb-5">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-orange-500 mb-3 shadow-lg shadow-red-500/30">
+                <AlertOctagon size={28} className="text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Wipe all data?</h2>
+              <p className="text-sm text-slate-400 mt-1">This will permanently delete every send batch and support ticket.</p>
+            </div>
+
+            <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 text-xs text-slate-300 space-y-1.5 mb-5">
+              <p className="font-semibold text-red-300 mb-1">Will be deleted:</p>
+              <p>• {batches.length} send batches (across all users)</p>
+              <p>• {tickets.length} support tickets</p>
+              <p>• All reset password tokens</p>
+              <p className="font-semibold text-emerald-300 mt-2">Will be preserved:</p>
+              <p>• {users.length} user accounts</p>
+              <p>• Login sessions</p>
+              <p className="text-red-400/80 mt-2 font-medium">This cannot be undone.</p>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-300 mb-1.5 block">Type <span className="font-mono text-red-300">CLEAR ALL DATA</span> to confirm</label>
+              <input
+                type="text"
+                value={clearAllConfirm}
+                onChange={(e) => setClearAllConfirm(e.target.value)}
+                placeholder="CLEAR ALL DATA"
+                className="input-field"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => { setShowClearAllData(false); setClearAllConfirm(""); }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 text-sm font-semibold hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={clearingData || clearAllConfirm !== "CLEAR ALL DATA"}
+                onClick={handleClearAllData}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 text-white text-sm font-semibold shadow-lg shadow-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {clearingData ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {clearingData ? "Clearing..." : "Wipe all data"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

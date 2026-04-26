@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// DESTRUCTIVE: Wipes ALL Email Blaster data from Vercel KV / Upstash.
+// DESTRUCTIVE: Wipes ALL Reach.io data from Vercel KV / Upstash.
 //
 // What it deletes (everything under the eb: namespace):
 //   - All user accounts (eb:user:*)
@@ -114,7 +114,7 @@ async function ask(question) {
 }
 
 async function main() {
-  console.log("\n🔍 Scanning Email Blaster KV namespace...\n");
+  console.log("\n🔍 Scanning Reach.io KV namespace...\n");
 
   const allKeys = await listKeys("eb:*");
   console.log(`   Found ${allKeys.length} key(s) under eb:* namespace\n`);

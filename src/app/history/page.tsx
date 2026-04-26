@@ -73,10 +73,22 @@ export default function HistoryPage() {
   const [loaded, setLoaded] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [deleteBatchId, setDeleteBatchId] = useState<string | null>(null);
+  const [clearedEvent, setClearedEvent] = useState<{ timestamp: string; byName: string; deletedKeys: number } | null>(null);
+  const [clearedDismissed, setClearedDismissed] = useState(false);
 
   useEffect(() => {
     setHistory(loadHistory());
     setLoaded(true);
+    // Check if admin recently wiped data
+    fetch("/api/data-cleared-at").then((r) => r.json()).then((data) => {
+      if (data.event) {
+        // Only show if user hasn't dismissed this specific event
+        const dismissedAt = localStorage.getItem("admin-clear-dismissed");
+        if (dismissedAt !== data.event.timestamp) {
+          setClearedEvent(data.event);
+        }
+      }
+    }).catch(() => {});
   }, []);
 
   const refresh = () => setHistory(loadHistory());
@@ -270,6 +282,39 @@ export default function HistoryPage() {
           </button>
         )}
       </div>
+
+      {/* Admin cleared data banner */}
+      {clearedEvent && !clearedDismissed && (
+        <div className="mb-6 relative overflow-hidden rounded-2xl border border-amber-500/30">
+          <div className="absolute inset-0 bg-gradient-to-r from-amber-500/15 to-orange-500/15" />
+          <div className="relative p-4 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shrink-0">
+              <AlertCircle size={20} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-white">Admin cleared all data</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {clearedEvent.byName ? `${clearedEvent.byName} (admin)` : "An admin"} wiped all send batches and tickets on{" "}
+                <span className="text-amber-300 font-medium">{formatDate(clearedEvent.timestamp)} at {formatTime(clearedEvent.timestamp)}</span>.
+                Your account is preserved, but server-side history is gone.
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1.5">
+                Your local browser history above may still show old entries — those are cached and not affected.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                localStorage.setItem("admin-clear-dismissed", clearedEvent.timestamp);
+                setClearedDismissed(true);
+              }}
+              className="text-slate-500 hover:text-slate-300 text-xs"
+              title="Dismiss"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       {history.length > 0 && (

@@ -1,6 +1,6 @@
 # Google OAuth Setup (5 minutes, one-time)
 
-To enable "Sign in with Google" in Email Blaster Pro, you need to create a Google OAuth Client.
+To enable "Sign in with Google" in Reach.io, you need to create a Google OAuth Client.
 
 ## Why?
 
@@ -26,7 +26,7 @@ This replaces the App Password flow. Users sign in with one click instead of gen
 1. Go to **APIs & Services → OAuth consent screen**
 2. Choose **External** → Create
 3. Fill in:
-   - App name: `Email Blaster Pro`
+   - App name: `Reach.io`
    - User support email: your email
    - Developer email: your email
 4. Save & Continue
@@ -42,10 +42,10 @@ This replaces the App Password flow. Users sign in with one click instead of gen
 1. Go to **APIs & Services → Credentials**
 2. Click **+ Create Credentials → OAuth client ID**
 3. Application type: **Web application**
-4. Name: `Email Blaster Web`
+4. Name: `Reach.io Web`
 5. **Authorized redirect URIs** — add ALL of these:
    - `http://localhost:3000/api/auth/google/callback` (local dev)
-   - `https://email-blaster-orpin.vercel.app/api/auth/google/callback` (your Vercel URL)
+   - `https://reach-io-orpin.vercel.app/api/auth/google/callback` (your Vercel URL)
    - Any other domain you deploy to
 6. Click **Create**
 7. **Copy the Client ID and Client Secret** — you'll need them next

@@ -1,5 +1,6 @@
 {
-  "version": "v9",
-  "buildTime": "2026-04-26T17:00:00Z",
-  "notes": "Support tickets, admin reply system, deleted-batch tracking, separate login errors, register-then-login flow"
+  "version": "v10",
+  "release": "1.0.0",
+  "buildTime": "2026-04-26T19:00:00Z",
+  "notes": "Reach.io v1.0 — production ready: rate limiting, admin promote/demote, self-delete, hardened sessions"
 }
