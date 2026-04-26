@@ -10,11 +10,11 @@ export async function POST(req: NextRequest) {
 
     const user = await getUserByEmail(email);
     if (!user) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+      return NextResponse.json({ error: "User not found. Please register first.", code: "USER_NOT_FOUND" }, { status: 404 });
     }
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+      return NextResponse.json({ error: "Wrong password. Try again.", code: "WRONG_PASSWORD" }, { status: 401 });
     }
 
     user.lastLoginAt = new Date().toISOString();

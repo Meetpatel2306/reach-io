@@ -84,6 +84,13 @@ async function sendViaGmailApi(
 
   if (!res.ok) {
     const errText = await res.text();
+    // Detect missing-scope error so client can show a helpful message
+    if (res.status === 403 && (errText.includes("insufficient") || errText.includes("ACCESS_TOKEN_SCOPE_INSUFFICIENT"))) {
+      throw new Error("INSUFFICIENT_SCOPE: gmail.send permission was not granted. Sign out and sign in with Google again — make sure to allow 'Send email on your behalf'.");
+    }
+    if (res.status === 401) {
+      throw new Error("UNAUTHORIZED: Google token expired or revoked. Sign out and sign in again.");
+    }
     throw new Error(`Gmail API: ${res.status} ${errText.slice(0, 200)}`);
   }
 }
@@ -188,11 +195,13 @@ export async function POST(req: NextRequest) {
     const failed = results.filter((r) => r.status === "failed").length;
 
     // Save batch to server-side KV with user attribution (so admin can see everything)
+    let savedBatchId: string | null = null;
     try {
       const session = await getSession();
       const userEmail = session.email || "anonymous";
       const userName = session.name || "";
       const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      savedBatchId = batchId;
       const batch = {
         id: batchId,
         userEmail,
@@ -211,15 +220,13 @@ export async function POST(req: NextRequest) {
           const recipient = recipients.find((rec) => rec.email === r.email);
           return { email: r.email, name: recipient?.name || "", status: r.status, error: r.error };
         }),
+        deletedByUser: false,
       };
-      // Store under both keys for fast lookup
       await kvSet(`batch:${batchId}`, batch);
       await kvSet(`userbatch:${userEmail}:${batchId}`, batchId);
-    } catch {
-      // Don't fail the response if storage fails
-    }
+    } catch {}
 
-    return NextResponse.json({ sent, failed, total: recipients.length, results, method: useOAuth ? "oauth" : "smtp" });
+    return NextResponse.json({ sent, failed, total: recipients.length, results, method: useOAuth ? "oauth" : "smtp", batchId: savedBatchId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

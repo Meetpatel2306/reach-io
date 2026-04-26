@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUser, setSessionUser } from "@/lib/auth";
+import { createUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,10 +15,11 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await createUser(email, name, password);
-    await setSessionUser(user);
+    // Do NOT auto-login. User must sign in explicitly after registering.
 
     return NextResponse.json({
       success: true,
+      message: "Account created successfully. Please sign in.",
       user: { email: user.email, name: user.name, role: user.role },
     });
   } catch (err: unknown) {

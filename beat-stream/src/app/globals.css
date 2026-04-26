@@ -101,7 +101,12 @@ button:active { transform: scale(0.96); }
 .text-muted { color: var(--text-muted); }
 .bg-accent { background: var(--accent); }
 .text-accent { color: var(--accent); }
-.fill-accent { fill: var(--accent); }
+/* Lucide icons render as <svg fill="none" stroke="currentColor" ...>.
+   The presentation attribute `fill="none"` beats inherited CSS in some
+   browsers, so we use !important AND target the inner path to guarantee
+   the heart actually fills with the user's theme accent color. */
+.fill-accent,
+.fill-accent path { fill: var(--accent) !important; }
 .stroke-accent { stroke: var(--accent); }
 .border-accent { border-color: var(--accent); }
 .hover\:bg-accent-hover:hover { background: var(--accent-hover); }

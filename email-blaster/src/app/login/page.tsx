@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
   const [storageWarning, setStorageWarning] = useState(false);
 
   useEffect(() => {
@@ -22,7 +23,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError(""); setErrorCode("");
     setLoading(true);
     try {
       const res = await fetch("/api/auth/login", {
@@ -33,6 +34,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Login failed");
+        setErrorCode(data.code || "");
       } else {
         router.push("/");
         router.refresh();
@@ -124,9 +126,20 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-xs text-red-300 flex items-start gap-2">
-              <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className={`rounded-lg p-3 text-xs flex items-start gap-2 ${
+              errorCode === "USER_NOT_FOUND"
+                ? "bg-amber-500/10 border border-amber-500/30 text-amber-300"
+                : "bg-red-500/10 border border-red-500/30 text-red-300"
+            }`}>
+              <AlertTriangle size={14} className={`shrink-0 mt-0.5 ${errorCode === "USER_NOT_FOUND" ? "text-amber-400" : "text-red-400"}`} />
+              <div className="flex-1">
+                <p>{error}</p>
+                {errorCode === "USER_NOT_FOUND" && (
+                  <Link href="/register" className="inline-flex items-center gap-1 mt-2 text-[11px] font-semibold text-amber-200 hover:text-amber-100 underline">
+                    Create an account →
+                  </Link>
+                )}
+              </div>
             </div>
           )}
 

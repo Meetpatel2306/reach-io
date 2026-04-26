@@ -7,7 +7,8 @@ import {
   ArrowLeft, Shield, Users, Search, Trash2, KeyRound, Crown, Calendar,
   Mail, Loader2, Check, X, AlertOctagon, Send, BarChart3, Activity,
   Filter, RefreshCw, ChevronDown, ChevronUp, UserPlus, Clock,
-  Layers, TrendingUp, Zap, Database, Eye, Paperclip, ExternalLink, Inbox
+  Layers, TrendingUp, Zap, Eye, Paperclip, ExternalLink, Inbox,
+  MessageSquare, User as UserIcon, Reply
 } from "lucide-react";
 
 interface User {
@@ -34,6 +35,8 @@ interface ServerBatch {
   sent: number;
   failed: number;
   results: { email: string; name: string; status: string; error?: string }[];
+  deletedByUser?: boolean;
+  deletedAt?: string;
 }
 
 function formatDate(iso: string) {
@@ -57,7 +60,28 @@ function timeAgo(iso?: string) {
   return formatDate(iso);
 }
 
-type TabId = "overview" | "activity" | "users" | "emails";
+type TabId = "overview" | "activity" | "users" | "emails" | "support";
+
+interface TicketReply {
+  from: "user" | "admin";
+  fromName: string;
+  message: string;
+  timestamp: string;
+}
+
+interface SupportTicket {
+  id: string;
+  userEmail: string;
+  userName: string;
+  subject: string;
+  message: string;
+  status: "open" | "resolved";
+  priority: "low" | "normal" | "high";
+  category: "bug" | "question" | "feature" | "other";
+  createdAt: string;
+  updatedAt: string;
+  replies: TicketReply[];
+}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -65,10 +89,14 @@ export default function AdminPage() {
   const [authorized, setAuthorized] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [batches, setBatches] = useState<ServerBatch[]>([]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [search, setSearch] = useState("");
   const [filterUser, setFilterUser] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<"all" | "success" | "partial" | "failed">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "success" | "partial" | "failed" | "deleted">("all");
   const [expandedBatch, setExpandedBatch] = useState<string | null>(null);
   const [resettingEmail, setResettingEmail] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -96,13 +124,42 @@ export default function AdminPage() {
 
   const loadAll = async () => {
     setRefreshing(true);
-    const [usersRes, batchesRes] = await Promise.all([
+    const [usersRes, batchesRes, ticketsRes] = await Promise.all([
       fetch("/api/admin/users").then((r) => r.json()),
       fetch("/api/admin/all-batches").then((r) => r.json()),
+      fetch("/api/admin/support").then((r) => r.json()),
     ]);
     if (usersRes.users) setUsers(usersRes.users);
     if (batchesRes.batches) setBatches(batchesRes.batches);
+    if (ticketsRes.tickets) setTickets(ticketsRes.tickets);
     setRefreshing(false);
+  };
+
+  const handleAdminReply = async (ticketId: string, status?: "open" | "resolved") => {
+    if (!replyText.trim() && !status) return;
+    setSendingReply(true);
+    try {
+      await fetch("/api/support/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketId, message: replyText || "(status changed)", status }),
+      });
+      setReplyText("");
+      setReplyTo(null);
+      await loadAll();
+    } catch {}
+    setSendingReply(false);
+  };
+
+  const handleResolveTicket = async (ticketId: string, status: "open" | "resolved") => {
+    try {
+      await fetch("/api/support/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticketId, message: status === "resolved" ? "Marked as resolved by admin." : "Reopened by admin.", status }),
+      });
+      await loadAll();
+    } catch {}
   };
 
   const handleResetPassword = async (email: string) => {
@@ -145,10 +202,11 @@ export default function AdminPage() {
     const activeToday = users.filter((u) => u.lastLoginAt && Date.now() - new Date(u.lastLoginAt).getTime() < 24 * 60 * 60 * 1000).length;
     const batchesToday = batches.filter((b) => Date.now() - new Date(b.timestamp).getTime() < 24 * 60 * 60 * 1000).length;
     const oauthBatches = batches.filter((b) => b.method === "oauth").length;
+    const deletedBatches = batches.filter((b) => b.deletedByUser).length;
     return {
       totalUsers, admins, totalBatches, totalEmailsSent, totalEmailsFailed,
       totalRecipients, successRate, uniqueRecipients, newUsersThisWeek,
-      activeToday, batchesToday, oauthBatches,
+      activeToday, batchesToday, oauthBatches, deletedBatches,
     };
   }, [users, batches]);
 
@@ -170,6 +228,7 @@ export default function AdminPage() {
     if (filterStatus === "success") arr = arr.filter((b) => b.failed === 0 && b.sent > 0);
     if (filterStatus === "partial") arr = arr.filter((b) => b.failed > 0 && b.sent > 0);
     if (filterStatus === "failed") arr = arr.filter((b) => b.sent === 0);
+    if (filterStatus === "deleted") arr = arr.filter((b) => b.deletedByUser);
     if (search) {
       const q = search.toLowerCase();
       arr = arr.filter((b) =>
@@ -266,6 +325,7 @@ export default function AdminPage() {
           { id: "activity", label: "All Activity", icon: Activity, count: batches.length },
           { id: "users", label: "Users", icon: Users, count: users.length },
           { id: "emails", label: "All Emails", icon: Inbox, count: allEmails.length },
+          { id: "support", label: "Support", icon: MessageSquare, count: tickets.filter((t) => t.status === "open").length },
         ] as { id: TabId; label: string; icon: typeof BarChart3; count?: number }[]).map((t) => {
           const Icon = t.icon;
           return (
@@ -302,12 +362,13 @@ export default function AdminPage() {
             ].map((s) => <StatCard key={s.label} {...s} />)}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             {[
               { icon: UserPlus, label: "New Users (7d)", value: stats.newUsersThisWeek, sub: "this week", color: "cyan" },
               { icon: Activity, label: "Active Today", value: stats.activeToday, sub: "logged in 24h", color: "blue" },
               { icon: Zap, label: "OAuth Sends", value: stats.oauthBatches, sub: `${stats.totalBatches - stats.oauthBatches} via SMTP`, color: "amber" },
               { icon: Mail, label: "Unique Recipients", value: stats.uniqueRecipients, sub: "distinct emails", color: "pink" },
+              { icon: Trash2, label: "User-Deleted", value: stats.deletedBatches, sub: "hidden from user", color: "red" },
             ].map((s) => <StatCard key={s.label} {...s} />)}
           </div>
 
@@ -403,6 +464,7 @@ export default function AdminPage() {
               <option value="success">Success</option>
               <option value="partial">Partial</option>
               <option value="failed">Failed</option>
+              <option value="deleted">User-Deleted</option>
             </select>
           </div>
 
@@ -507,6 +569,132 @@ export default function AdminPage() {
         </>
       )}
 
+      {/* SUPPORT TAB */}
+      {activeTab === "support" && (
+        <div className="space-y-3">
+          {tickets.length === 0 ? (
+            <div className="glass-card text-center py-12">
+              <MessageSquare size={48} className="text-slate-700 mx-auto mb-4" />
+              <p className="text-slate-400">No support tickets yet.</p>
+            </div>
+          ) : (
+            tickets.map((t) => {
+              const isOpen = t.status === "open";
+              return (
+                <div key={t.id} className={`glass-card !p-0 overflow-hidden ${isOpen ? "!border-amber-500/30" : "opacity-80"}`}>
+                  <div className="p-4 flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      isOpen ? "bg-amber-500/15" : "bg-emerald-500/10"
+                    }`}>
+                      {isOpen ? <MessageSquare size={18} className="text-amber-400" /> : <Check size={18} className="text-emerald-400" />}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-sm font-bold text-white">{t.subject}</p>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full border capitalize ${
+                          t.priority === "high" ? "bg-red-500/20 text-red-300 border-red-500/30" :
+                          t.priority === "low" ? "bg-slate-700/50 text-slate-400 border-slate-700" :
+                          "bg-violet-500/20 text-violet-300 border-violet-500/30"
+                        }`}>{t.priority}</span>
+                        <span className="text-[9px] bg-slate-700/50 text-slate-300 border border-slate-700 px-1.5 py-0.5 rounded-full capitalize">{t.category}</span>
+                        {!isOpen && <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">Resolved</span>}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 mb-2">
+                        <span className="text-violet-300 font-medium">{t.userName || t.userEmail.split("@")[0]}</span>
+                        <span>•</span>
+                        <span>{t.userEmail}</span>
+                        <span>•</span>
+                        <span>{timeAgo(t.createdAt)}</span>
+                      </div>
+
+                      {/* Original message */}
+                      <div className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/30 mb-2">
+                        <pre className="text-xs text-slate-300 whitespace-pre-wrap font-sans">{t.message}</pre>
+                      </div>
+
+                      {/* Replies */}
+                      {t.replies.length > 0 && (
+                        <div className="space-y-2 mb-2">
+                          {t.replies.map((r, i) => (
+                            <div key={i} className={`rounded-lg p-3 border ${
+                              r.from === "admin"
+                                ? "bg-amber-500/5 border-amber-500/20 ml-6"
+                                : "bg-slate-800/40 border-slate-700/30 mr-6"
+                            }`}>
+                              <div className="flex items-center gap-2 mb-1">
+                                {r.from === "admin" ? (
+                                  <span className="text-[10px] text-amber-300 font-semibold flex items-center gap-1"><Crown size={10} />{r.fromName}</span>
+                                ) : (
+                                  <span className="text-[10px] text-violet-300 font-semibold flex items-center gap-1"><UserIcon size={10} />{r.fromName}</span>
+                                )}
+                                <span className="text-[10px] text-slate-600">{timeAgo(r.timestamp)}</span>
+                              </div>
+                              <pre className="text-xs text-slate-300 whitespace-pre-wrap font-sans">{r.message}</pre>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Reply form */}
+                      {isOpen && (
+                        <div className="mt-3">
+                          {replyTo === t.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                rows={3}
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                placeholder="Type your reply..."
+                                className="input-field !text-xs"
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <button onClick={() => { setReplyTo(null); setReplyText(""); }} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-xs">Cancel</button>
+                                <button
+                                  onClick={() => handleAdminReply(t.id)}
+                                  disabled={sendingReply || !replyText.trim()}
+                                  className="px-3 py-1.5 rounded-lg bg-violet-500/20 text-violet-300 border border-violet-500/40 text-xs font-semibold flex-1 flex items-center justify-center gap-1"
+                                >
+                                  {sendingReply ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                                  Send Reply
+                                </button>
+                                <button
+                                  onClick={() => handleAdminReply(t.id, "resolved")}
+                                  disabled={sendingReply}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-xs font-semibold"
+                                >
+                                  Reply & Resolve
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button onClick={() => setReplyTo(t.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/30 text-xs hover:bg-violet-500/20">
+                                <Reply size={12} />Reply
+                              </button>
+                              <button onClick={() => handleResolveTicket(t.id, "resolved")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-xs hover:bg-emerald-500/20">
+                                <Check size={12} />Mark Resolved
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!isOpen && (
+                        <button onClick={() => handleResolveTicket(t.id, "open")} className="text-xs text-slate-500 hover:text-amber-300 mt-2">
+                          Reopen ticket
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {/* Confirm delete modal */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(10px)" }}>
@@ -566,26 +754,39 @@ interface BatchRowProps {
 function BatchRow({ batch, expanded, onToggle }: BatchRowProps) {
   const allSuccess = batch.failed === 0;
   const allFailed = batch.sent === 0;
+  const isDeleted = !!batch.deletedByUser;
 
   return (
-    <div className="glass-card !p-0 overflow-hidden">
+    <div className={`glass-card !p-0 overflow-hidden ${isDeleted ? "!border-red-500/30 opacity-80" : ""}`}>
       <button onClick={onToggle} className="w-full p-3 flex items-center gap-3 text-left hover:bg-white/[0.02] transition-colors">
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+          isDeleted ? "bg-red-500/10" :
           allSuccess ? "bg-emerald-500/10" : allFailed ? "bg-red-500/10" : "bg-amber-500/10"
         }`}>
-          {allSuccess ? <Check size={16} className="text-emerald-400" /> : allFailed ? <X size={16} className="text-red-400" /> : <AlertOctagon size={16} className="text-amber-400" />}
+          {isDeleted ? <Trash2 size={16} className="text-red-400" /> :
+           allSuccess ? <Check size={16} className="text-emerald-400" /> :
+           allFailed ? <X size={16} className="text-red-400" /> :
+           <AlertOctagon size={16} className="text-amber-400" />}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
-            <p className="text-sm font-semibold text-white truncate">{batch.subject}</p>
+            <p className={`text-sm font-semibold text-white truncate ${isDeleted ? "line-through text-slate-400" : ""}`}>{batch.subject}</p>
             {batch.hasAttachment && <Paperclip size={11} className="text-violet-400 shrink-0" />}
             {batch.method === "oauth" && <span className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1.5 py-0.5 rounded-full shrink-0">OAuth</span>}
+            {isDeleted && (
+              <span className="text-[9px] bg-red-500/20 text-red-300 border border-red-500/30 px-1.5 py-0.5 rounded-full shrink-0 flex items-center gap-1">
+                <Trash2 size={9} />Deleted by user
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
             <span className="text-violet-300">{batch.userName || batch.userEmail.split("@")[0]}</span>
             <span>{batch.userEmail}</span>
             <span>{timeAgo(batch.timestamp)}</span>
+            {isDeleted && batch.deletedAt && (
+              <span className="text-red-400/80">Deleted {timeAgo(batch.deletedAt)}</span>
+            )}
           </div>
         </div>
 
@@ -599,6 +800,20 @@ function BatchRow({ batch, expanded, onToggle }: BatchRowProps) {
 
       {expanded && (
         <div className="border-t border-slate-800/50 p-4 space-y-3 bg-slate-900/20">
+          {/* User-deleted notice */}
+          {isDeleted && batch.deletedAt && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-start gap-2">
+              <Trash2 size={14} className="text-red-400 mt-0.5 shrink-0" />
+              <div className="text-xs">
+                <p className="text-red-300 font-semibold">Deleted from user&apos;s history</p>
+                <p className="text-slate-400 mt-0.5">
+                  {batch.userName || batch.userEmail} removed this batch on {formatDate(batch.deletedAt)} at {formatTime(batch.deletedAt)}.
+                  Visible only to admin. The user can no longer see this in their own history view.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Meta */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
             <Detail label="From" value={batch.from} />

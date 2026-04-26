@@ -623,7 +623,8 @@ export default function Home() {
           return { email: r.email, name: recipient?.name || "", status: r.status as "sent" | "failed", error: r.error };
         });
         saveToHistory({
-          id: `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          // Use server's batchId so user-side delete can sync to server
+          id: data.batchId || `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
           timestamp: new Date().toISOString(),
           subject,
           body,
@@ -762,6 +763,9 @@ export default function Home() {
                     )}
                     <Link href="/history" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
                       <History size={12} />Send History
+                    </Link>
+                    <Link href="/support" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
+                      <HelpCircle size={12} />Help & Support
                     </Link>
                     <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10">
                       <LogOut size={12} />Sign Out
@@ -944,8 +948,14 @@ export default function Home() {
                     {oauthError === "not_configured" && "Google OAuth is not set up on the server. The admin needs to add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Vercel environment variables."}
                     {oauthError === "missing_code" && "Sign-in flow was incomplete. Please try again."}
                     {oauthError === "access_denied" && "You denied permission. Please try again and allow access."}
-                    {!["not_configured", "missing_code", "access_denied"].includes(oauthError) && `Error: ${decodeURIComponent(oauthError)}`}
+                    {oauthError === "gmail_scope_not_granted" && "Gmail send permission was NOT granted. The admin must add the gmail.send scope in Google Cloud Console → OAuth consent screen → Scopes. After that, sign in again."}
+                    {!["not_configured", "missing_code", "access_denied", "gmail_scope_not_granted"].includes(oauthError) && `Error: ${decodeURIComponent(oauthError)}`}
                   </p>
+                  {oauthError === "gmail_scope_not_granted" && (
+                    <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-2 text-[11px] text-violet-400 hover:text-violet-300 underline">
+                      Open OAuth Consent Screen →
+                    </a>
+                  )}
                   {oauthError === "not_configured" && (
                     <p className="text-[10px] text-slate-500 mt-2">See SETUP-GOOGLE-OAUTH.md for setup instructions. App Password method below works as a fallback.</p>
                   )}

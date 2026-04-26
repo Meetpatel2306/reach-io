@@ -43,6 +43,12 @@ export async function GET(req: Request) {
     const tokens = await tokenRes.json();
     // tokens = { access_token, refresh_token, expires_in, token_type, scope, id_token }
 
+    // Verify gmail.send scope was granted (Google may silently drop it if not registered in consent screen)
+    const grantedScopes = (tokens.scope || "").split(" ");
+    if (!grantedScopes.includes("https://www.googleapis.com/auth/gmail.send")) {
+      return NextResponse.redirect(`${url.origin}/?oauth_error=gmail_scope_not_granted`);
+    }
+
     // Get user email from userinfo
     const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokens.access_token}` },

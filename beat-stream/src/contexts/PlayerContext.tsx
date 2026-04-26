@@ -330,6 +330,47 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     eqRef.current.setEnhancement(settings.enhancement);
   }, [settings.equalizer.gains, settings.equalizer.enabled, settings.normalize, settings.enhancement]);
 
+  // Hot-swap the audio source when the user changes streaming quality. We
+  // refetch the current song's URL at the new bitrate, swap audio.src, and
+  // resume from the same currentTime so playback continues without a jump.
+  // Skips on first mount (lastQualityRef is the same as settings.quality).
+  const lastQualityRef = useRef(settings.quality);
+  useEffect(() => {
+    if (settings.quality === lastQualityRef.current) return;
+    lastQualityRef.current = settings.quality;
+
+    const a = audioRef.current;
+    const cur = stateRef.current.currentSong;
+    if (!a || !cur || !a.src) return;
+
+    // Don't try to re-encode local files / iTunes proxied via YT — those
+    // already pick the only available stream.
+    if (cur.id?.startsWith("local_")) return;
+
+    const wasAt = a.currentTime;
+    const wasPlaying = !a.paused;
+
+    (async () => {
+      try {
+        const fresh = await ensureFullSong(cur, true);
+        const url = pickDownloadUrl(fresh, settings.quality);
+        if (!url) return;
+        // If the new URL is identical to what's already loaded, nothing to do
+        if (url === a.src) return;
+        a.src = url;
+        a.load();
+        const onMeta = () => {
+          try { a.currentTime = Math.min(wasAt, (a.duration || 0) - 1); } catch {}
+          if (wasPlaying) a.play().catch(() => {});
+          a.removeEventListener("loadedmetadata", onMeta);
+        };
+        a.addEventListener("loadedmetadata", onMeta);
+      } catch {}
+    })();
+    // Also bust the preloaded next-song so it re-fetches at new quality
+    preloadedSongIdRef.current = null;
+  }, [settings.quality, ensureFullSong]);
+
   function startSilent() {
     const sa = silentRef.current;
     if (!sa) return;
@@ -577,7 +618,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const next = useCallback(() => {
     setState((s) => {
-      if (!s.queue.length) return s;
+      // No queue at all — fall back to recently-played so the Next button
+      // never feels dead. If user has nothing in history yet, fire a trending
+      // search in the background and play the first result.
+      if (!s.queue.length) {
+        const r = recent.list();
+        if (r.length) {
+          loadAndPlay(r[0]);
+          return { ...s, queue: r, queueIndex: 0, queueSource: "Recently Played" };
+        }
+        api.searchSongs("trending", 0, 20).then((res) => {
+          if (res.results?.length) {
+            setState((cur) => ({ ...cur, queue: res.results, queueIndex: 0, queueSource: "Trending" }));
+            loadAndPlay(res.results[0]);
+          }
+        }).catch(() => {});
+        return s;
+      }
       let nextIdx: number;
       if (s.repeat === "one") nextIdx = s.queueIndex;
       else if (s.smartShuffle) {
@@ -593,8 +650,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       else {
         nextIdx = s.queueIndex + 1;
         if (nextIdx >= s.queue.length) {
-          if (s.repeat === "all") nextIdx = 0;
-          else return s;
+          if (s.repeat === "all") {
+            nextIdx = 0;
+          } else {
+            // We're at the end of a non-looping queue. Don't dead-end —
+            // either autoplay related songs (if enabled) or fall back to
+            // the user's recently-played list.
+            if (settings.autoplay && s.currentSong) {
+              autoplaySimilar(s.currentSong);
+              return s;
+            }
+            const r = recent.list().filter((x) => x.id !== s.currentSong?.id);
+            if (r.length) {
+              loadAndPlay(r[0]);
+              return { ...s, queue: r, queueIndex: 0, queueSource: "Recently Played" };
+            }
+            return s;
+          }
         }
       }
       const song = s.queue[nextIdx];
@@ -607,7 +679,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const a = audioRef.current;
     if (a && a.currentTime > 3) { a.currentTime = 0; return; }
     setState((s) => {
-      if (!s.queue.length) return s;
+      // Empty queue → fall back to recents like next() does
+      if (!s.queue.length) {
+        const r = recent.list();
+        if (r.length) {
+          loadAndPlay(r[0]);
+          return { ...s, queue: r, queueIndex: 0, queueSource: "Recently Played" };
+        }
+        return s;
+      }
       const prevIdx = s.queueIndex - 1;
       if (prevIdx < 0) {
         if (a) a.currentTime = 0;

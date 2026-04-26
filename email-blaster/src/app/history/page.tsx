@@ -81,9 +81,33 @@ export default function HistoryPage() {
 
   const refresh = () => setHistory(loadHistory());
 
-  const handleClearAll = () => { clearHistory(); setHistory([]); setShowClearConfirm(false); };
+  const handleClearAll = async () => {
+    // Notify server so admin can see this user cleared their history
+    try {
+      await fetch("/api/history/mark-deleted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+    } catch {}
+    clearHistory();
+    setHistory([]);
+    setShowClearConfirm(false);
+  };
 
-  const handleDeleteBatch = (id: string) => { deleteBatch(id); refresh(); setDeleteBatchId(null); };
+  const handleDeleteBatch = async (id: string) => {
+    // Notify server first so admin can see this batch was deleted by user
+    try {
+      await fetch("/api/history/mark-deleted", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchIds: [id] }),
+      });
+    } catch {}
+    deleteBatch(id);
+    refresh();
+    setDeleteBatchId(null);
+  };
 
   // --- Batch filtering & sorting ---
 

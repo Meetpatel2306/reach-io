@@ -130,7 +130,7 @@ function buildSongFromSearch(item: PipedSearchItem): Song | null {
   if (!id) return null;
   const thumb = bestThumbnail(item.thumbnail);
   const dur = item.duration && item.duration > 0 ? item.duration : 0;
-  return {
+  const song: Song = {
     id: songIdForYt(id),
     name: (item.title || "").replace(/\s*\(Official.*?\)\s*/i, "").trim() || (item.title || ""),
     type: "song",
@@ -146,10 +146,13 @@ function buildSongFromSearch(item: PipedSearchItem): Song | null {
       { quality: "150x150", url: thumb },
       { quality: "500x500", url: thumb },
     ] : [],
-    // downloadUrl gets populated lazily via resolveYtStreamUrl. Until then the
-    // player will refetch via ensureFullSong.
     downloadUrl: [],
   };
+  // Use YouTube's view count as the global play-count signal so the SongRow
+  // stats strip can show "🎧 12.4M" on YT-sourced songs the same way it does
+  // for JioSaavn tracks.
+  if (item.views && item.views > 0) (song as any).playCount = item.views;
+  return song;
 }
 
 /** Search YouTube Music via Piped. Filter favors music tracks. */

@@ -31,6 +31,8 @@ export default function RegisterPage() {
   ];
   const allValid = checks.every((c) => c.pass) && !!email && !!name;
 
+  const [registered, setRegistered] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -46,8 +48,9 @@ export default function RegisterPage() {
       if (!res.ok) {
         setError(data.error || "Registration failed");
       } else {
-        router.push("/");
-        router.refresh();
+        setRegistered(true);
+        // Redirect to login after a brief success display
+        setTimeout(() => router.push("/login"), 1500);
       }
     } catch {
       setError("Network error");
@@ -93,7 +96,19 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {/* Form */}
+        {registered ? (
+          <div className="glass-card !border-emerald-500/30 !p-8 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-br from-emerald-500 to-cyan-500 shadow-lg shadow-emerald-500/40 mb-4">
+              <Check size={28} className="text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Account created!</h2>
+            <p className="text-sm text-slate-400 mb-3">Please sign in with your new credentials.</p>
+            <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
+              <Loader2 size={11} className="animate-spin" />
+              Redirecting to sign in...
+            </p>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="glass-card !border-emerald-500/20 !p-6 space-y-5">
           {/* Name */}
           <div className="space-y-1.5">
@@ -246,6 +261,7 @@ export default function RegisterPage() {
             I already have an account
           </Link>
         </form>
+        )}
 
         {/* Trust badge */}
         <div className="flex items-center justify-center gap-1.5 mt-6 text-[10px] text-slate-600">
