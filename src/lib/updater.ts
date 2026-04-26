@@ -8,6 +8,7 @@ const VERSION_CHECK_INTERVAL = 30000;
 // This is the SOURCE OF TRUTH for "what version am I running".
 export const BUNDLED_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
 export const BUNDLED_BUILD_TIME = process.env.NEXT_PUBLIC_APP_BUILD_TIME || "";
+export const BUNDLED_RELEASE = process.env.NEXT_PUBLIC_APP_RELEASE || "1.0.0";
 
 interface VersionInfo {
   version: string;
