@@ -6,7 +6,7 @@ import {
   Save, ChevronRight, ChevronLeft, Download, Activity,
   Clock, Paperclip, Eye, EyeOff, Settings, Loader2, History,
   Zap, HelpCircle, Shield, Key, BookOpen, Share, Plus, Smartphone,
-  RefreshCw, Sparkles
+  RefreshCw, Sparkles, LogOut, Crown, User as UserIcon
 } from "lucide-react";
 import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
@@ -151,6 +151,10 @@ export default function Home() {
   // Google OAuth session
   const [oauthSession, setOauthSession] = useState<OAuthSession | null>(null);
 
+  // App auth session (login/register)
+  const [authUser, setAuthUser] = useState<{ email: string; name: string; role: "admin" | "user" } | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
   // Persist state to localStorage whenever key values change
   const persistState = useCallback(async () => {
     if (restoring) return;
@@ -218,7 +222,10 @@ export default function Home() {
     // No env var fallback — user must configure via UI settings
   }, []);
 
-  // Google OAuth: consume callback fragment + load saved session
+  // OAuth error from URL (?oauth_error=...)
+  const [oauthError, setOauthError] = useState<string>("");
+
+  // Google OAuth: consume callback fragment + load saved session + handle errors
   useEffect(() => {
     const fromFragment = consumeOAuthFragment();
     if (fromFragment) {
@@ -232,7 +239,30 @@ export default function Home() {
         setSmtpConfigured(true);
       }
     }
+
+    // Show OAuth error from query string
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("oauth_error");
+    if (err) {
+      setOauthError(err);
+      setShowSettings(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("oauth_error");
+      history.replaceState(null, "", url.toString());
+    }
   }, []);
+
+  // Load current logged-in user
+  useEffect(() => {
+    fetch("/api/auth/me").then((r) => r.json()).then((data) => {
+      if (data.user) setAuthUser(data.user);
+    }).catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  };
 
   const handleSignOut = () => {
     clearOAuth();
@@ -682,6 +712,56 @@ export default function Home() {
           >
             <HelpCircle size={18} />
           </button>
+
+          {/* User menu */}
+          {authUser && (
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className={`flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg border transition-all ${
+                  authUser.role === "admin"
+                    ? "bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20"
+                    : "bg-slate-800/50 border-slate-700/50 hover:border-violet-500/30"
+                }`}
+                title={authUser.email}
+              >
+                <div className={`w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-bold ${
+                  authUser.role === "admin"
+                    ? "bg-gradient-to-br from-amber-500 to-orange-500"
+                    : "bg-gradient-to-br from-violet-500 to-indigo-500"
+                }`}>
+                  {(authUser.name || authUser.email).charAt(0).toUpperCase()}
+                </div>
+                <span className={`text-xs font-medium hidden sm:inline ${authUser.role === "admin" ? "text-amber-300" : "text-slate-300"}`}>
+                  {authUser.name || authUser.email.split("@")[0]}
+                </span>
+                {authUser.role === "admin" && <Crown size={11} className="text-amber-400" />}
+              </button>
+
+              {showUserMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-56 glass-card !p-2 z-50 !border-violet-500/30">
+                    <div className="px-3 py-2 border-b border-slate-700/30 mb-1">
+                      <p className="text-xs font-bold text-white truncate">{authUser.name || "User"}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
+                    </div>
+                    {authUser.role === "admin" && (
+                      <Link href="/admin" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-amber-300 hover:bg-amber-500/10">
+                        <Crown size={12} />Admin Dashboard
+                      </Link>
+                    )}
+                    <Link href="/history" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
+                      <History size={12} />Send History
+                    </Link>
+                    <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10">
+                      <LogOut size={12} />Sign Out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {/* Smart Install/Update button */}
           {isInstalled && updateAvailable ? (
             // Installed + update available → show Update button
@@ -843,6 +923,28 @@ export default function Home() {
             </div>
             <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-slate-300"><X size={18} /></button>
           </div>
+
+          {/* OAuth error banner */}
+          {oauthError && (
+            <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+              <div className="flex items-start gap-3 mb-2">
+                <X size={18} className="text-red-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-red-300">Google Sign-In Failed</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {oauthError === "not_configured" && "Google OAuth is not set up on the server. The admin needs to add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to Vercel environment variables."}
+                    {oauthError === "missing_code" && "Sign-in flow was incomplete. Please try again."}
+                    {oauthError === "access_denied" && "You denied permission. Please try again and allow access."}
+                    {!["not_configured", "missing_code", "access_denied"].includes(oauthError) && `Error: ${decodeURIComponent(oauthError)}`}
+                  </p>
+                  {oauthError === "not_configured" && (
+                    <p className="text-[10px] text-slate-500 mt-2">See SETUP-GOOGLE-OAUTH.md for setup instructions. App Password method below works as a fallback.</p>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => setOauthError("")} className="text-xs text-slate-500 hover:text-slate-300">Dismiss</button>
+            </div>
+          )}
 
           {/* Google OAuth — primary, recommended path */}
           {oauthSession ? (

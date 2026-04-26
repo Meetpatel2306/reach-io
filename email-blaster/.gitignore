@@ -1,7 +1,11 @@
 node_modules/
 .next/
 .env
+.env.local
 uploads/
 smtp-config.json
+.local-storage.json
+test-results/
+playwright-report/
 
 .vercel

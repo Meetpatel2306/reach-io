@@ -28,14 +28,20 @@ export default function HistoryPage() {
   const [byLanguage, setByLanguage] = useState<{ name: string; pct: number }[]>([]);
   const [byHour, setByHour] = useState<number[]>([]);
   const [totalSec, setTotalSec] = useState(0);
+  // Compute on the client only so the SSR pass renders zeros and the post-
+  // hydration pass renders the real totals — no hydration mismatch.
+  const [totalPlays, setTotalPlays] = useState(0);
+  const [last7, setLast7] = useState(0);
 
   useEffect(() => {
     const cache = songCache.all();
     const h = history.list();
     const enriched = h.map((e) => ({ ...e, song: cache[e.songId] })).filter((e) => !!e.song);
     setEntries(enriched);
+    setLast7(enriched.filter((e) => Date.now() - e.timestamp < 7 * 86400_000).length);
 
     const cmap = counts.all();
+    setTotalPlays(Object.values(cmap).reduce((a, b) => a + b, 0));
     const top = Object.entries(cmap)
       .map(([id, c]) => ({ song: cache[id], count: c }))
       .filter((x) => !!x.song)
@@ -84,7 +90,6 @@ export default function HistoryPage() {
     return out;
   }, [entries]);
 
-  const totalPlays = Object.values(counts.all()).reduce((s, n) => s + n, 0);
   const hours = Math.floor(totalSec / 3600);
   const mins = Math.floor((totalSec % 3600) / 60);
   const maxHour = Math.max(...byHour, 1);
@@ -98,7 +103,7 @@ export default function HistoryPage() {
         <Stat icon={Music} label="Total plays" value={totalPlays.toString()} />
         <Stat icon={Clock} label="Listening time" value={`${hours}h ${mins}m`} />
         <Stat icon={TrendingUp} label="Top artist" value={topArtists[0]?.name || "—"} />
-        <Stat icon={Calendar} label="Last 7 days" value={(entries.filter((e) => Date.now() - e.timestamp < 7 * 86400_000).length).toString()} />
+        <Stat icon={Calendar} label="Last 7 days" value={last7.toString()} />
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">

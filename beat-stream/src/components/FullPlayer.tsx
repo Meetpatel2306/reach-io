@@ -18,6 +18,7 @@ import { QueuePanel } from "./QueuePanel";
 import { LyricsPanel } from "./LyricsPanel";
 import { Seekbar } from "./Seekbar";
 import { Visualizer } from "./Visualizer";
+import { OutputMeter } from "./OutputMeter";
 import { shareStoryImage } from "@/lib/storyShare";
 import type { Quality } from "@/lib/types";
 
@@ -346,8 +347,11 @@ export function FullPlayer() {
               </div>
             </div>
 
-            <div className="hidden lg:flex items-center gap-2 text-white/70 no-drag" title="Use your device's volume buttons too — they control system media volume">
-              <button onClick={player.toggleMute} aria-label="Mute">
+            {/* Volume strip — always visible (was desktop-only). Includes a
+                real-time output meter so the user can see actual audio level
+                even though browsers can't read system/device volume. */}
+            <div className="flex items-center gap-2 text-white/70 no-drag mt-1">
+              <button onClick={player.toggleMute} aria-label={player.isMuted ? "Unmute" : "Mute"} className="p-1.5 hover:text-white">
                 {player.isMuted || player.volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
               <input
@@ -356,9 +360,13 @@ export function FullPlayer() {
                 onChange={(e) => player.setVolume(parseFloat(e.target.value))}
                 className="range range-accent flex-1"
                 style={{ ["--val" as string]: `${(player.isMuted ? 0 : player.volume) * 100}%` }}
-                aria-label="Volume"
+                aria-label="App volume"
               />
               <span className="text-[10px] text-white/40 tabular-nums w-8 text-right">{Math.round((player.isMuted ? 0 : player.volume) * 100)}%</span>
+              <OutputMeter width={4} height={20} vertical={true} />
+            </div>
+            <div className="text-[10px] text-white/40 -mt-0.5 ml-8 leading-tight no-drag">
+              Slider = app volume. Hardware volume buttons control your device's system volume separately — meter shows actual loudness.
             </div>
           </div>
         </div>

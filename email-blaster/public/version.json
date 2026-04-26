@@ -1,5 +1,5 @@
 {
-  "version": "v6",
-  "buildTime": "2026-04-26T14:00:00Z",
-  "notes": "Sign in with Google — no App Password needed for Gmail users"
+  "version": "v7",
+  "buildTime": "2026-04-26T15:00:00Z",
+  "notes": "Login/register/admin: full user accounts, sessions, password reset, admin dashboard"
 }

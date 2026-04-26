@@ -352,6 +352,28 @@ function SearchInner() {
                   {playlists.map((p) => <PlaylistCard key={p.id} playlist={p} />)}
                 </div>
               )}
+              {tab === "lyrics" && (
+                <div className="space-y-2 max-w-3xl">
+                  <div className="text-sm text-secondary mb-3 flex items-center gap-2">
+                    <Quote className="w-4 h-4" /> Searching lyrics across LRCLIB's catalog…
+                  </div>
+                  {lyricMatches.length === 0 ? (
+                    <div className="text-center py-12 text-secondary">No lyric matches. Try a different snippet.</div>
+                  ) : (
+                    lyricMatches.map((m, i) => (
+                      <button
+                        key={i}
+                        onClick={() => submit(`${m.trackName} ${m.artistName}`)}
+                        className="w-full text-left bg-card hover:bg-card-hover rounded-lg p-4"
+                      >
+                        <div className="font-semibold">{m.trackName}</div>
+                        <div className="text-xs text-secondary mt-0.5">{m.artistName}{m.albumName ? ` — ${m.albumName}` : ""}</div>
+                        {m.snippet && <div className="text-sm text-white/70 italic mt-2 line-clamp-2">"{m.snippet}"</div>}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </>
           )}
         </>

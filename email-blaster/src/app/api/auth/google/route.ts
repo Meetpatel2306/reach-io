@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 
 // Initiates Google OAuth flow
 export async function GET(req: Request) {
+  const url = new URL(req.url);
   const clientId = process.env.GOOGLE_CLIENT_ID;
+
   if (!clientId) {
-    return NextResponse.json({ error: "Google OAuth not configured. Set GOOGLE_CLIENT_ID." }, { status: 500 });
+    // Redirect back to home with friendly error
+    return NextResponse.redirect(`${url.origin}/?oauth_error=not_configured`);
   }
 
-  const url = new URL(req.url);
   const redirectUri = `${url.origin}/api/auth/google/callback`;
 
-  // Scopes: send mail + profile info
   const scope = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -24,6 +25,7 @@ export async function GET(req: Request) {
     scope,
     access_type: "offline",
     prompt: "consent",
+    include_granted_scopes: "true",
   });
 
   return NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);

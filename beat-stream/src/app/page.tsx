@@ -88,6 +88,10 @@ export default function HomePage() {
   const [timeCapsule, setTimeCapsule] = useState<Song[]>([]);
   const [becauseSong, setBecauseSong] = useState<Song | null>(null);
   const [streak, setStreak] = useState(0);
+  // Computed-from-localStorage values that must be 0 on SSR + first-render
+  // (otherwise hydration mismatches the post-hydration value).
+  const [recapTotal, setRecapTotal] = useState(0);
+  const [recapArtists, setRecapArtists] = useState(0);
 
   useEffect(() => {
     setRecentlyPlayed(recent.list().slice(0, 20));
@@ -105,13 +109,6 @@ export default function HomePage() {
     });
     setTopArtists(Object.values(artistTotals).sort((a, b) => b.total - a.total).slice(0, 10));
 
-    setClusters(getClusters(6));
-    setOnRepeat(getOnRepeat(20));
-    setRepeatRewind(getRepeatRewind(20));
-    setTimeCapsule(getTimeCapsule(15));
-    setBecauseSong(getBecauseYouPlayed());
-    setStreak(getStreak());
-  }, []);
 
   const playedIds = typeof window !== "undefined" ? new Set(Object.keys(counts.all())) : new Set();
   const discover = (discoverRaw || []).filter((s) => !playedIds.has(s.id)).slice(0, 12);
