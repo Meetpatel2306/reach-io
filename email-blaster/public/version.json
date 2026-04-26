@@ -1,0 +1,5 @@
+{
+  "version": "v3",
+  "buildTime": "2026-04-26T00:00:00Z",
+  "notes": "iOS PWA support, update mechanism, dynamic SMTP settings, send history"
+}

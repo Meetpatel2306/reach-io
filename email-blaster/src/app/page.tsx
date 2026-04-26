@@ -5,11 +5,13 @@ import {
   FileText, Upload, Mail, Send, Users, Check, X, Trash2,
   Save, ChevronRight, ChevronLeft, Download, Activity,
   Clock, Paperclip, Eye, EyeOff, Settings, Loader2, History,
-  Zap, HelpCircle, Shield, Key, BookOpen, Share, Plus, Smartphone
+  Zap, HelpCircle, Shield, Key, BookOpen, Share, Plus, Smartphone,
+  RefreshCw, Sparkles
 } from "lucide-react";
 import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
 import type { EmailResult } from "@/lib/history";
+import { setupAutoUpdateCheck, applyUpdate, checkForUpdate } from "@/lib/updater";
 
 interface Recipient { name: string; email: string; }
 interface SendResult { email: string; status: string; error?: string; }
@@ -136,6 +138,13 @@ export default function Home() {
   const [showIOSInstall, setShowIOSInstall] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
+  // Update detection
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateVersion, setUpdateVersion] = useState<string>("");
+  const [updateNotes, setUpdateNotes] = useState<string>("");
+  const [updating, setUpdating] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
   // Persist state to localStorage whenever key values change
   const persistState = useCallback(async () => {
     if (restoring) return;
@@ -224,6 +233,35 @@ export default function Home() {
 
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
+
+  // Auto update detection — works on iOS PWA + Android + Desktop
+  useEffect(() => {
+    const cleanup = setupAutoUpdateCheck((info) => {
+      setUpdateAvailable(true);
+      setUpdateVersion(info.version);
+      setUpdateNotes(info.notes || "");
+    });
+    return cleanup;
+  }, []);
+
+  const handleUpdate = async () => {
+    setUpdating(true);
+    await applyUpdate(updateVersion);
+  };
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    const { hasUpdate, latest } = await checkForUpdate();
+    if (hasUpdate && latest) {
+      setUpdateAvailable(true);
+      setUpdateVersion(latest.version);
+      setUpdateNotes(latest.notes || "");
+    } else {
+      setSmtpMsg("You're on the latest version!");
+      setTimeout(() => setSmtpMsg(""), 3000);
+    }
+    setCheckingUpdate(false);
+  };
 
   const saveSmtpConfig = async () => {
     if (!smtpUser || !smtpPass) { setSmtpMsg("Email and password are required"); return; }
@@ -599,6 +637,47 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Update Available Banner — works on iOS PWA + Android + Desktop */}
+      {updateAvailable && (
+        <div className="mb-6 relative overflow-hidden rounded-2xl border border-emerald-500/30">
+          {/* Animated gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-blue-500/20" />
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent animate-pulse" />
+
+          <div className="relative p-4 flex items-center gap-4 flex-wrap">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
+              <Sparkles size={22} className="text-white" />
+            </div>
+
+            <div className="flex-1 min-w-[200px]">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white">New Version Available!</h3>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">{updateVersion}</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {updateNotes || "Tap update to get the latest features and fixes."}
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setUpdateAvailable(false)}
+                className="px-3 py-2 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/50 text-xs hover:text-slate-200 transition-all"
+              >
+                Later
+              </button>
+              <button
+                onClick={handleUpdate}
+                disabled={updating}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-sm font-semibold shadow-lg shadow-emerald-500/30 hover:from-emerald-600 hover:to-cyan-600 transition-all disabled:opacity-60"
+              >
+                {updating ? <><Loader2 size={14} className="animate-spin" />Updating...</> : <><RefreshCw size={14} />Update Now</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PWA Banner (Chrome / Edge / Android) */}
       {!isInstalled && installPrompt && (
         <div className="install-banner mb-6">
@@ -739,6 +818,27 @@ export default function Home() {
           </div>
 
           <p className="text-[10px] text-slate-600 mt-3">For Gmail, use an App Password from myaccount.google.com/apppasswords</p>
+
+          {/* App Update Section */}
+          <div className="mt-5 pt-4 border-t border-slate-800/60">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-cyan-400" />
+                <div>
+                  <p className="text-xs font-semibold text-slate-300">App Updates</p>
+                  <p className="text-[10px] text-slate-600">Auto-checks every 30s. Tap to check now.</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs hover:bg-cyan-500/20 transition-all"
+              >
+                {checkingUpdate ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                {checkingUpdate ? "Checking..." : "Check for Updates"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
