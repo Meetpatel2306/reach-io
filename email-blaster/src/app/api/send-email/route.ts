@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import fs from "fs/promises";
 import path from "path";
+import { getSession } from "@/lib/auth";
+import { kvSet } from "@/lib/storage";
 
 const UPLOADS_DIR = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "uploads");
 
@@ -184,6 +186,38 @@ export async function POST(req: NextRequest) {
 
     const sent = results.filter((r) => r.status === "sent").length;
     const failed = results.filter((r) => r.status === "failed").length;
+
+    // Save batch to server-side KV with user attribution (so admin can see everything)
+    try {
+      const session = await getSession();
+      const userEmail = session.email || "anonymous";
+      const userName = session.name || "";
+      const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const batch = {
+        id: batchId,
+        userEmail,
+        userName,
+        timestamp: new Date().toISOString(),
+        subject,
+        body,
+        from: fromAddress,
+        method: useOAuth ? "oauth" : "smtp",
+        hasAttachment: !!resumeBuffer,
+        attachmentName: resumeBuffer ? resumeName : "",
+        totalRecipients: recipients.length,
+        sent,
+        failed,
+        results: results.map((r) => {
+          const recipient = recipients.find((rec) => rec.email === r.email);
+          return { email: r.email, name: recipient?.name || "", status: r.status, error: r.error };
+        }),
+      };
+      // Store under both keys for fast lookup
+      await kvSet(`batch:${batchId}`, batch);
+      await kvSet(`userbatch:${userEmail}:${batchId}`, batchId);
+    } catch {
+      // Don't fail the response if storage fails
+    }
 
     return NextResponse.json({ sent, failed, total: recipients.length, results, method: useOAuth ? "oauth" : "smtp" });
   } catch (err: unknown) {

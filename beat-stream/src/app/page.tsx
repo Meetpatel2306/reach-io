@@ -109,8 +109,25 @@ export default function HomePage() {
     });
     setTopArtists(Object.values(artistTotals).sort((a, b) => b.total - a.total).slice(0, 10));
 
+    setClusters(getClusters(6));
+    setOnRepeat(getOnRepeat(20));
+    setRepeatRewind(getRepeatRewind(20));
+    setTimeCapsule(getTimeCapsule(15));
+    setBecauseSong(getBecauseYouPlayed());
+    setStreak(getStreak());
 
-  const playedIds = typeof window !== "undefined" ? new Set(Object.keys(counts.all())) : new Set();
+    // Weekly-recap totals (computed client-side only — see SSR note above)
+    const cmap = counts.all();
+    setRecapTotal(Object.values(cmap).reduce((a, b) => a + b, 0));
+    const artistSet = new Set<string>();
+    Object.keys(cmap).forEach((id) => { const a = cache[id]?.artists?.primary?.[0]?.id; if (a) artistSet.add(a); });
+    setRecapArtists(artistSet.size);
+  }, []);
+
+  // Filter discover by user's already-played ids — but only after hydration,
+  // so SSR & first-render see the unfiltered list. Otherwise hydration mismatch.
+  const [playedIds, setPlayedIds] = useState<Set<string>>(new Set());
+  useEffect(() => { setPlayedIds(new Set(Object.keys(counts.all()))); }, []);
   const discover = (discoverRaw || []).filter((s) => !playedIds.has(s.id)).slice(0, 12);
 
   return (
@@ -142,16 +159,7 @@ export default function HomePage() {
             <div className="text-xs uppercase tracking-widest text-accent font-bold flex items-center gap-1">
               <Sparkles className="w-3 h-3" /> This week
             </div>
-            <div className="font-bold text-lg mt-0.5">
-              {(() => {
-                const cmap = counts.all();
-                const cache = songCache.all();
-                const total = Object.values(cmap).reduce((a, b) => a + b, 0);
-                const artistSet = new Set<string>();
-                Object.keys(cmap).forEach((id) => { const a = cache[id]?.artists?.primary?.[0]?.id; if (a) artistSet.add(a); });
-                return `${total} plays • ${artistSet.size} artists`;
-              })()}
-            </div>
+            <div className="font-bold text-lg mt-0.5">{recapTotal} plays • {recapArtists} artists</div>
             <div className="text-xs text-secondary">Track everything in History →</div>
           </div>
         </div>

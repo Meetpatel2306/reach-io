@@ -55,9 +55,13 @@ export function scoreSong(song: Song, query: string): number {
   for (const t of qTokens) if (artists.includes(t)) artistMatch++;
   score += artistMatch * 25;
 
-  // Album-name match: originals are usually on an album of the same name
-  for (const t of qTokens) if (album.includes(t)) score += 8;
-  if (album && name && album.includes(name)) score += 20;
+  // Album-name match: originals are usually on an album of the same name.
+  // Bumped so movie-name searches surface their tracks aggressively (Bollywood
+  // album = movie title).
+  for (const t of qTokens) if (album.includes(t)) score += 18;
+  if (album && name && album.includes(name)) score += 30;
+  if (album === q) score += 120;          // exact movie/album name match
+  if (album.includes(q)) score += 50;      // movie name as substring
 
   // Popularity (log-scaled — 1M plays = +60, 10M = +70)
   if (plays > 0) score += Math.log10(plays + 1) * 10;

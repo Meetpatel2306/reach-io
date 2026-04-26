@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Shield, Users, Search, Trash2, KeyRound, Crown, Calendar,
-  Mail, Loader2, Check, X, AlertOctagon, Copy, BarChart3, TrendingUp,
-  UserPlus, Clock, Activity, Filter, RefreshCw, ChevronDown, ChevronUp
+  Mail, Loader2, Check, X, AlertOctagon, Send, BarChart3, Activity,
+  Filter, RefreshCw, ChevronDown, ChevronUp, UserPlus, Clock,
+  Layers, TrendingUp, Zap, Database, Eye, Paperclip, ExternalLink, Inbox
 } from "lucide-react";
 
 interface User {
@@ -16,6 +17,23 @@ interface User {
   createdAt: string;
   lastLoginAt?: string;
   sessionMaxAgeMs?: number;
+}
+
+interface ServerBatch {
+  id: string;
+  userEmail: string;
+  userName: string;
+  timestamp: string;
+  subject: string;
+  body: string;
+  from: string;
+  method: string;
+  hasAttachment: boolean;
+  attachmentName: string;
+  totalRecipients: number;
+  sent: number;
+  failed: number;
+  results: { email: string; name: string; status: string; error?: string }[];
 }
 
 function formatDate(iso: string) {
@@ -39,17 +57,24 @@ function timeAgo(iso?: string) {
   return formatDate(iso);
 }
 
+type TabId = "overview" | "activity" | "users" | "emails";
+
 export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
+  const [batches, setBatches] = useState<ServerBatch[]>([]);
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "admin" | "user">("all");
+  const [filterUser, setFilterUser] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "success" | "partial" | "failed">("all");
+  const [expandedBatch, setExpandedBatch] = useState<string | null>(null);
   const [resettingEmail, setResettingEmail] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -60,7 +85,7 @@ export default function AdminPage() {
           return;
         }
         setAuthorized(true);
-        await loadUsers();
+        await loadAll();
       } catch {
         router.push("/login");
       }
@@ -69,10 +94,15 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadUsers = async () => {
-    const res = await fetch("/api/admin/users");
-    const data = await res.json();
-    if (data.users) setUsers(data.users);
+  const loadAll = async () => {
+    setRefreshing(true);
+    const [usersRes, batchesRes] = await Promise.all([
+      fetch("/api/admin/users").then((r) => r.json()),
+      fetch("/api/admin/all-batches").then((r) => r.json()),
+    ]);
+    if (usersRes.users) setUsers(usersRes.users);
+    if (batchesRes.batches) setBatches(batchesRes.batches);
+    setRefreshing(false);
   };
 
   const handleResetPassword = async (email: string) => {
@@ -87,10 +117,7 @@ export default function AdminPage() {
     });
     const data = await res.json();
     setActionMsg(data.message || data.error || "");
-    if (res.ok) {
-      setResettingEmail(null);
-      setNewPassword("");
-    }
+    if (res.ok) { setResettingEmail(null); setNewPassword(""); }
   };
 
   const handleDeleteUser = async (email: string) => {
@@ -101,38 +128,87 @@ export default function AdminPage() {
     });
     const data = await res.json();
     setActionMsg(data.error || `Deleted ${email}`);
-    if (res.ok) {
-      setConfirmDelete(null);
-      await loadUsers();
-    }
+    if (res.ok) { setConfirmDelete(null); await loadAll(); }
   };
 
-  // Filter + search
-  const filtered = useMemo(() => {
-    let arr = users;
-    if (filter !== "all") arr = arr.filter((u) => u.role === filter);
+  // ==== Stats ====
+  const stats = useMemo(() => {
+    const totalUsers = users.length;
+    const admins = users.filter((u) => u.role === "admin").length;
+    const totalBatches = batches.length;
+    const totalEmailsSent = batches.reduce((a, b) => a + b.sent, 0);
+    const totalEmailsFailed = batches.reduce((a, b) => a + b.failed, 0);
+    const totalRecipients = batches.reduce((a, b) => a + b.totalRecipients, 0);
+    const successRate = totalRecipients > 0 ? Math.round((totalEmailsSent / totalRecipients) * 100) : 0;
+    const uniqueRecipients = new Set(batches.flatMap((b) => b.results.map((r) => r.email.toLowerCase()))).size;
+    const newUsersThisWeek = users.filter((u) => Date.now() - new Date(u.createdAt).getTime() < 7 * 24 * 60 * 60 * 1000).length;
+    const activeToday = users.filter((u) => u.lastLoginAt && Date.now() - new Date(u.lastLoginAt).getTime() < 24 * 60 * 60 * 1000).length;
+    const batchesToday = batches.filter((b) => Date.now() - new Date(b.timestamp).getTime() < 24 * 60 * 60 * 1000).length;
+    const oauthBatches = batches.filter((b) => b.method === "oauth").length;
+    return {
+      totalUsers, admins, totalBatches, totalEmailsSent, totalEmailsFailed,
+      totalRecipients, successRate, uniqueRecipients, newUsersThisWeek,
+      activeToday, batchesToday, oauthBatches,
+    };
+  }, [users, batches]);
+
+  // Per-user breakdown
+  const userBreakdown = useMemo(() => {
+    return users.map((u) => {
+      const userBatches = batches.filter((b) => b.userEmail === u.email);
+      const sent = userBatches.reduce((a, b) => a + b.sent, 0);
+      const failed = userBatches.reduce((a, b) => a + b.failed, 0);
+      const recipients = userBatches.reduce((a, b) => a + b.totalRecipients, 0);
+      return { user: u, batches: userBatches.length, sent, failed, recipients, lastSend: userBatches[0]?.timestamp };
+    }).sort((a, b) => b.sent - a.sent);
+  }, [users, batches]);
+
+  // Filtered batches
+  const filteredBatches = useMemo(() => {
+    let arr = [...batches];
+    if (filterUser !== "all") arr = arr.filter((b) => b.userEmail === filterUser);
+    if (filterStatus === "success") arr = arr.filter((b) => b.failed === 0 && b.sent > 0);
+    if (filterStatus === "partial") arr = arr.filter((b) => b.failed > 0 && b.sent > 0);
+    if (filterStatus === "failed") arr = arr.filter((b) => b.sent === 0);
     if (search) {
       const q = search.toLowerCase();
-      arr = arr.filter((u) => u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q));
+      arr = arr.filter((b) =>
+        b.subject.toLowerCase().includes(q) ||
+        b.userEmail.toLowerCase().includes(q) ||
+        b.userName.toLowerCase().includes(q) ||
+        b.from.toLowerCase().includes(q) ||
+        b.results.some((r) => r.email.toLowerCase().includes(q))
+      );
     }
     return arr;
-  }, [users, filter, search]);
+  }, [batches, filterUser, filterStatus, search]);
 
-  // Stats
-  const stats = useMemo(() => {
-    const total = users.length;
-    const admins = users.filter((u) => u.role === "admin").length;
-    const newThisWeek = users.filter((u) => {
-      const created = new Date(u.createdAt).getTime();
-      return Date.now() - created < 7 * 24 * 60 * 60 * 1000;
-    }).length;
-    const activeToday = users.filter((u) => {
-      if (!u.lastLoginAt) return false;
-      const last = new Date(u.lastLoginAt).getTime();
-      return Date.now() - last < 24 * 60 * 60 * 1000;
-    }).length;
-    return { total, admins, newThisWeek, activeToday };
-  }, [users]);
+  // All emails sent (flat list across all batches)
+  const allEmails = useMemo(() => {
+    const items = batches.flatMap((b) =>
+      b.results.map((r) => ({
+        recipientEmail: r.email,
+        recipientName: r.name,
+        status: r.status,
+        error: r.error,
+        senderEmail: b.userEmail,
+        senderName: b.userName,
+        subject: b.subject,
+        timestamp: b.timestamp,
+        batchId: b.id,
+      }))
+    );
+    if (search) {
+      const q = search.toLowerCase();
+      return items.filter((i) =>
+        i.recipientEmail.toLowerCase().includes(q) ||
+        i.recipientName.toLowerCase().includes(q) ||
+        i.senderEmail.toLowerCase().includes(q) ||
+        i.subject.toLowerCase().includes(q)
+      );
+    }
+    return items;
+  }, [batches, search]);
 
   if (loading) {
     return (
@@ -141,12 +217,11 @@ export default function AdminPage() {
       </div>
     );
   }
-
   if (!authorized) return null;
 
   return (
-    <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto">
-      {/* Header */}
+    <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
+      {/* Hero header */}
       <div className="relative overflow-hidden rounded-2xl mb-6">
         <div className="absolute inset-0 bg-gradient-to-br from-amber-500/20 via-orange-500/15 to-red-500/20" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[400px] h-[200px] bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -155,9 +230,14 @@ export default function AdminPage() {
             <Link href="/" className="p-2 rounded-lg border border-slate-700/50 bg-slate-900/60 backdrop-blur text-slate-400 hover:text-amber-300 hover:border-amber-500/30 transition-all">
               <ArrowLeft size={18} />
             </Link>
-            <span className="text-xs text-amber-400/80 uppercase tracking-widest flex items-center gap-1.5">
-              <Crown size={12} />Admin Console
-            </span>
+            <div className="flex items-center gap-2">
+              <button onClick={loadAll} disabled={refreshing} className="p-2 rounded-lg bg-slate-900/60 backdrop-blur border border-slate-700/50 text-slate-400 hover:text-violet-300">
+                <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+              </button>
+              <span className="text-xs text-amber-400/80 uppercase tracking-widest flex items-center gap-1.5">
+                <Crown size={12} />Admin Console
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30">
@@ -165,7 +245,7 @@ export default function AdminPage() {
             </div>
             <div>
               <h1 className="text-2xl md:text-3xl font-bold text-white">Admin Dashboard</h1>
-              <p className="text-sm text-slate-400">Manage users, reset passwords, view stats</p>
+              <p className="text-sm text-slate-400">Full visibility — every user, every email, every send</p>
             </div>
           </div>
         </div>
@@ -173,85 +253,258 @@ export default function AdminPage() {
 
       {/* Action message */}
       {actionMsg && (
-        <div className={`mb-4 p-3 rounded-lg text-sm ${actionMsg.includes("Deleted") || actionMsg.includes("reset") ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border border-red-500/30 text-red-300"}`}>
-          {actionMsg}
-          <button onClick={() => setActionMsg("")} className="float-right text-xs opacity-60 hover:opacity-100">×</button>
+        <div className={`mb-4 p-3 rounded-lg text-sm flex items-center justify-between ${actionMsg.includes("Deleted") || actionMsg.includes("reset") ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border border-red-500/30 text-red-300"}`}>
+          <span>{actionMsg}</span>
+          <button onClick={() => setActionMsg("")} className="opacity-60 hover:opacity-100"><X size={14} /></button>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {[
-          { icon: Users, label: "Total Users", value: stats.total, color: "text-violet-300", gradient: "from-violet-500/20 to-violet-500/5", border: "border-violet-500/30" },
-          { icon: Crown, label: "Admins", value: stats.admins, color: "text-amber-300", gradient: "from-amber-500/20 to-amber-500/5", border: "border-amber-500/30" },
-          { icon: UserPlus, label: "New (7d)", value: stats.newThisWeek, color: "text-emerald-300", gradient: "from-emerald-500/20 to-emerald-500/5", border: "border-emerald-500/30" },
-          { icon: Activity, label: "Active Today", value: stats.activeToday, color: "text-blue-300", gradient: "from-blue-500/20 to-blue-500/5", border: "border-blue-500/30" },
-        ].map((s) => {
-          const Icon = s.icon;
+      {/* Tabs */}
+      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
+        {([
+          { id: "overview", label: "Overview", icon: BarChart3 },
+          { id: "activity", label: "All Activity", icon: Activity, count: batches.length },
+          { id: "users", label: "Users", icon: Users, count: users.length },
+          { id: "emails", label: "All Emails", icon: Inbox, count: allEmails.length },
+        ] as { id: TabId; label: string; icon: typeof BarChart3; count?: number }[]).map((t) => {
+          const Icon = t.icon;
           return (
-            <div key={s.label} className={`bg-gradient-to-br ${s.gradient} backdrop-blur rounded-2xl p-4 border ${s.border}`}>
-              <Icon size={18} className={`${s.color} mb-2`} />
-              <p className={`text-3xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">{s.label}</p>
-            </div>
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border whitespace-nowrap transition-all ${
+                activeTab === t.id
+                  ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                  : "bg-slate-800/40 text-slate-400 border-slate-700/40 hover:text-slate-200"
+              }`}
+            >
+              <Icon size={14} />
+              {t.label}
+              {t.count !== undefined && (
+                <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                  activeTab === t.id ? "bg-amber-500/30 text-amber-200" : "bg-slate-700/50 text-slate-300"
+                }`}>{t.count}</span>
+              )}
+            </button>
           );
         })}
       </div>
 
-      {/* Search + filter */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-5">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input
-            className="input-field pl-10"
-            placeholder="Search by name or email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Filter size={14} className="text-slate-500" />
-          {(["all", "admin", "user"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all capitalize ${
-                filter === f
-                  ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-                  : "bg-slate-800/50 text-slate-500 border-slate-700/50 hover:text-slate-200"
-              }`}
-            >
-              {f}{f !== "all" && "s"}
-            </button>
-          ))}
-          <button onClick={loadUsers} className="p-2 rounded-lg bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:text-violet-300" title="Refresh">
-            <RefreshCw size={14} />
-          </button>
-        </div>
-      </div>
+      {/* OVERVIEW TAB */}
+      {activeTab === "overview" && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {[
+              { icon: Users, label: "Total Users", value: stats.totalUsers, sub: `${stats.admins} admin`, color: "violet" },
+              { icon: Send, label: "Emails Sent", value: stats.totalEmailsSent, sub: `${stats.totalEmailsFailed} failed`, color: "emerald" },
+              { icon: Layers, label: "Send Batches", value: stats.totalBatches, sub: `${stats.batchesToday} today`, color: "blue" },
+              { icon: TrendingUp, label: "Success Rate", value: `${stats.successRate}%`, sub: `${stats.totalRecipients} total recipients`, color: stats.successRate >= 90 ? "emerald" : stats.successRate >= 50 ? "amber" : "red" },
+            ].map((s) => <StatCard key={s.label} {...s} />)}
+          </div>
 
-      {/* User list */}
-      {filtered.length === 0 ? (
-        <div className="glass-card text-center py-16">
-          <Users size={48} className="text-slate-700 mx-auto mb-4" />
-          <p className="text-slate-400">{search ? "No users match your search." : "No users yet."}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((user) => (
-            <UserCard
-              key={user.email}
-              user={user}
-              onResetPassword={() => { setResettingEmail(user.email); setNewPassword(""); }}
-              onDelete={() => setConfirmDelete(user.email)}
-              isResetting={resettingEmail === user.email}
-              newPassword={newPassword}
-              setNewPassword={setNewPassword}
-              onConfirmReset={() => handleResetPassword(user.email)}
-              onCancelReset={() => { setResettingEmail(null); setNewPassword(""); }}
-            />
-          ))}
-        </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            {[
+              { icon: UserPlus, label: "New Users (7d)", value: stats.newUsersThisWeek, sub: "this week", color: "cyan" },
+              { icon: Activity, label: "Active Today", value: stats.activeToday, sub: "logged in 24h", color: "blue" },
+              { icon: Zap, label: "OAuth Sends", value: stats.oauthBatches, sub: `${stats.totalBatches - stats.oauthBatches} via SMTP`, color: "amber" },
+              { icon: Mail, label: "Unique Recipients", value: stats.uniqueRecipients, sub: "distinct emails", color: "pink" },
+            ].map((s) => <StatCard key={s.label} {...s} />)}
+          </div>
+
+          {/* Per-user leaderboard */}
+          <div className="glass-card mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <BarChart3 size={18} className="text-amber-400" />
+                Per-User Activity
+              </h2>
+              <span className="text-xs text-slate-500">Sorted by emails sent</span>
+            </div>
+            {userBreakdown.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-8">No users yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {userBreakdown.map((u) => (
+                  <div key={u.user.email} className="flex items-center gap-3 p-3 bg-slate-800/30 rounded-xl border border-slate-700/30">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0 ${
+                      u.user.role === "admin" ? "bg-gradient-to-br from-amber-500 to-orange-500" : "bg-gradient-to-br from-violet-500 to-indigo-500"
+                    }`}>
+                      {(u.user.name || u.user.email).charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-white truncate">{u.user.name || u.user.email.split("@")[0]}</p>
+                        {u.user.role === "admin" && <Crown size={11} className="text-amber-400 shrink-0" />}
+                      </div>
+                      <p className="text-[11px] text-slate-500 truncate">{u.user.email}</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-center shrink-0">
+                      <div>
+                        <p className="text-xs font-bold text-emerald-400">{u.sent}</p>
+                        <p className="text-[9px] text-slate-500 uppercase">Sent</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-red-400">{u.failed}</p>
+                        <p className="text-[9px] text-slate-500 uppercase">Failed</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-blue-400">{u.batches}</p>
+                        <p className="text-[9px] text-slate-500 uppercase">Batches</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 hidden sm:block">
+                      <p className="text-[10px] text-slate-500 uppercase">Last send</p>
+                      <p className="text-[11px] text-slate-300">{timeAgo(u.lastSend)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recent activity preview */}
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <Clock size={18} className="text-violet-400" />
+                Recent Activity
+              </h2>
+              <button onClick={() => setActiveTab("activity")} className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1">
+                View all <ExternalLink size={11} />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {batches.slice(0, 5).map((b) => (
+                <BatchRow key={b.id} batch={b} expanded={false} onToggle={() => setActiveTab("activity")} />
+              ))}
+              {batches.length === 0 && (
+                <p className="text-sm text-slate-500 text-center py-8">No sends yet.</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ALL ACTIVITY TAB */}
+      {activeTab === "activity" && (
+        <>
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input className="input-field pl-10" placeholder="Search subject, user, recipient..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <select className="input-field !w-auto" value={filterUser} onChange={(e) => setFilterUser(e.target.value)}>
+              <option value="all">All Users</option>
+              {users.map((u) => <option key={u.email} value={u.email}>{u.name || u.email}</option>)}
+            </select>
+            <select className="input-field !w-auto" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}>
+              <option value="all">All Status</option>
+              <option value="success">Success</option>
+              <option value="partial">Partial</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            {filteredBatches.map((b) => (
+              <BatchRow
+                key={b.id}
+                batch={b}
+                expanded={expandedBatch === b.id}
+                onToggle={() => setExpandedBatch(expandedBatch === b.id ? null : b.id)}
+              />
+            ))}
+            {filteredBatches.length === 0 && (
+              <p className="text-sm text-slate-500 text-center py-12">No batches match filters.</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* USERS TAB */}
+      {activeTab === "users" && (
+        <>
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input className="input-field pl-10" placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {users
+              .filter((u) => !search || u.email.toLowerCase().includes(search.toLowerCase()) || u.name.toLowerCase().includes(search.toLowerCase()))
+              .map((user) => (
+                <UserCard
+                  key={user.email}
+                  user={user}
+                  batchCount={batches.filter((b) => b.userEmail === user.email).length}
+                  onResetPassword={() => { setResettingEmail(user.email); setNewPassword(""); }}
+                  onDelete={() => setConfirmDelete(user.email)}
+                  isResetting={resettingEmail === user.email}
+                  newPassword={newPassword}
+                  setNewPassword={setNewPassword}
+                  onConfirmReset={() => handleResetPassword(user.email)}
+                  onCancelReset={() => { setResettingEmail(null); setNewPassword(""); }}
+                />
+              ))}
+          </div>
+        </>
+      )}
+
+      {/* ALL EMAILS TAB */}
+      {activeTab === "emails" && (
+        <>
+          <div className="relative mb-4">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input className="input-field pl-10" placeholder="Search any recipient, sender, subject..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div className="glass-card !p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-900/60 sticky top-0">
+                  <tr className="text-left text-[10px] text-slate-500 uppercase tracking-wider">
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3">Recipient</th>
+                    <th className="px-3 py-3 hidden sm:table-cell">Subject</th>
+                    <th className="px-3 py-3 hidden md:table-cell">Sender</th>
+                    <th className="px-3 py-3 hidden md:table-cell">Sent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allEmails.slice(0, 500).map((e, i) => (
+                    <tr key={i} className="border-t border-slate-800/30 hover:bg-slate-800/20">
+                      <td className="px-3 py-2">
+                        {e.status === "sent" ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-400"><Check size={11} />Sent</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-red-400" title={e.error}><X size={11} />Failed</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <p className="text-xs text-violet-300">{e.recipientEmail}</p>
+                        {e.recipientName && <p className="text-[10px] text-slate-500">{e.recipientName}</p>}
+                      </td>
+                      <td className="px-3 py-2 hidden sm:table-cell text-xs text-slate-300 max-w-[200px] truncate">{e.subject}</td>
+                      <td className="px-3 py-2 hidden md:table-cell">
+                        <p className="text-xs text-slate-400">{e.senderName || e.senderEmail.split("@")[0]}</p>
+                        <p className="text-[10px] text-slate-600 truncate">{e.senderEmail}</p>
+                      </td>
+                      <td className="px-3 py-2 hidden md:table-cell text-[11px] text-slate-500">{timeAgo(e.timestamp)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {allEmails.length === 0 && (
+              <p className="text-sm text-slate-500 text-center py-12">No emails sent yet.</p>
+            )}
+            {allEmails.length > 500 && (
+              <p className="text-xs text-slate-500 text-center py-3 border-t border-slate-800/30">Showing 500 of {allEmails.length}. Refine search to see more.</p>
+            )}
+          </div>
+        </>
       )}
 
       {/* Confirm delete modal */}
@@ -262,14 +515,124 @@ export default function AdminPage() {
               <AlertOctagon size={32} className="text-white" />
             </div>
             <h2 className="text-xl font-bold text-white mb-2">Delete User?</h2>
-            <p className="text-sm text-slate-400 mb-1">This will permanently delete:</p>
             <p className="text-sm text-amber-300 font-mono mb-6">{confirmDelete}</p>
             <p className="text-xs text-red-400/60 mb-6">This action cannot be undone.</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmDelete(null)} className="flex-1 px-4 py-3 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 text-sm font-semibold hover:bg-slate-700">Cancel</button>
-              <button onClick={() => handleDeleteUser(confirmDelete)} className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 text-white text-sm font-semibold shadow-lg shadow-red-500/20">
-                Delete
-              </button>
+              <button onClick={() => handleDeleteUser(confirmDelete)} className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 text-white text-sm font-semibold shadow-lg shadow-red-500/20">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface StatCardProps {
+  icon: typeof BarChart3;
+  label: string;
+  value: number | string;
+  sub: string;
+  color: string;
+}
+
+function StatCard({ icon: Icon, label, value, sub, color }: StatCardProps) {
+  const colorMap: Record<string, { text: string; gradient: string; border: string }> = {
+    violet: { text: "text-violet-300", gradient: "from-violet-500/20 to-violet-500/5", border: "border-violet-500/30" },
+    emerald: { text: "text-emerald-300", gradient: "from-emerald-500/20 to-emerald-500/5", border: "border-emerald-500/30" },
+    blue: { text: "text-blue-300", gradient: "from-blue-500/20 to-blue-500/5", border: "border-blue-500/30" },
+    amber: { text: "text-amber-300", gradient: "from-amber-500/20 to-amber-500/5", border: "border-amber-500/30" },
+    red: { text: "text-red-300", gradient: "from-red-500/20 to-red-500/5", border: "border-red-500/30" },
+    cyan: { text: "text-cyan-300", gradient: "from-cyan-500/20 to-cyan-500/5", border: "border-cyan-500/30" },
+    pink: { text: "text-pink-300", gradient: "from-pink-500/20 to-pink-500/5", border: "border-pink-500/30" },
+  };
+  const c = colorMap[color] || colorMap.violet;
+  return (
+    <div className={`bg-gradient-to-br ${c.gradient} backdrop-blur rounded-2xl p-4 border ${c.border}`}>
+      <Icon size={18} className={`${c.text} mb-2`} />
+      <p className={`text-2xl font-bold ${c.text}`}>{value}</p>
+      <p className="text-[11px] text-slate-400 mt-0.5">{label}</p>
+      <p className="text-[10px] text-slate-600 mt-0.5">{sub}</p>
+    </div>
+  );
+}
+
+interface BatchRowProps {
+  batch: ServerBatch;
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+function BatchRow({ batch, expanded, onToggle }: BatchRowProps) {
+  const allSuccess = batch.failed === 0;
+  const allFailed = batch.sent === 0;
+
+  return (
+    <div className="glass-card !p-0 overflow-hidden">
+      <button onClick={onToggle} className="w-full p-3 flex items-center gap-3 text-left hover:bg-white/[0.02] transition-colors">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+          allSuccess ? "bg-emerald-500/10" : allFailed ? "bg-red-500/10" : "bg-amber-500/10"
+        }`}>
+          {allSuccess ? <Check size={16} className="text-emerald-400" /> : allFailed ? <X size={16} className="text-red-400" /> : <AlertOctagon size={16} className="text-amber-400" />}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <p className="text-sm font-semibold text-white truncate">{batch.subject}</p>
+            {batch.hasAttachment && <Paperclip size={11} className="text-violet-400 shrink-0" />}
+            {batch.method === "oauth" && <span className="text-[9px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1.5 py-0.5 rounded-full shrink-0">OAuth</span>}
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
+            <span className="text-violet-300">{batch.userName || batch.userEmail.split("@")[0]}</span>
+            <span>{batch.userEmail}</span>
+            <span>{timeAgo(batch.timestamp)}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-slate-400 flex items-center gap-1"><Users size={11} />{batch.totalRecipients}</span>
+          <span className="badge badge-success"><Check size={10} />&nbsp;{batch.sent}</span>
+          {batch.failed > 0 && <span className="badge badge-error"><X size={10} />&nbsp;{batch.failed}</span>}
+          {expanded ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-slate-800/50 p-4 space-y-3 bg-slate-900/20">
+          {/* Meta */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            <Detail label="From" value={batch.from} />
+            <Detail label="Sent" value={`${formatDate(batch.timestamp)} ${formatTime(batch.timestamp)}`} />
+            <Detail label="Method" value={batch.method.toUpperCase()} />
+            <Detail label="Attachment" value={batch.hasAttachment ? batch.attachmentName : "None"} />
+          </div>
+
+          {/* Body preview */}
+          <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Email body</p>
+            <pre className="text-xs text-slate-300 whitespace-pre-wrap font-sans max-h-32 overflow-y-auto">{batch.body}</pre>
+          </div>
+
+          {/* Recipients table */}
+          <div className="rounded-lg border border-slate-700/30 overflow-hidden">
+            <div className="bg-slate-900/60 px-3 py-2 text-[10px] text-slate-500 uppercase tracking-wider">
+              Recipients ({batch.results.length})
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-sm">
+                <tbody>
+                  {batch.results.map((r, i) => (
+                    <tr key={i} className="border-t border-slate-800/30">
+                      <td className="px-3 py-1.5">
+                        {r.status === "sent" ? <span className="inline-flex items-center gap-1 text-xs text-emerald-400"><Check size={10} /></span> : <span className="inline-flex items-center gap-1 text-xs text-red-400"><X size={10} /></span>}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-violet-300">{r.email}</td>
+                      <td className="px-3 py-1.5 text-xs text-slate-400 hidden md:table-cell">{r.name || "—"}</td>
+                      <td className="px-3 py-1.5 text-[10px] text-red-400/70 hidden md:table-cell">{r.error || ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -280,6 +643,7 @@ export default function AdminPage() {
 
 interface UserCardProps {
   user: User;
+  batchCount: number;
   onResetPassword: () => void;
   onDelete: () => void;
   isResetting: boolean;
@@ -289,38 +653,31 @@ interface UserCardProps {
   onCancelReset: () => void;
 }
 
-function UserCard({ user, onResetPassword, onDelete, isResetting, newPassword, setNewPassword, onConfirmReset, onCancelReset }: UserCardProps) {
-  const [expanded, setExpanded] = useState(false);
+function UserCard({ user, batchCount, onResetPassword, onDelete, isResetting, newPassword, setNewPassword, onConfirmReset, onCancelReset }: UserCardProps) {
   const isAdmin = user.role === "admin";
 
   return (
     <div className={`glass-card !p-0 overflow-hidden ${isAdmin ? "!border-amber-500/30" : ""}`}>
       <div className="p-4 flex items-center gap-3">
-        {/* Avatar */}
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 font-bold text-white ${
           isAdmin ? "bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg shadow-amber-500/20" : "bg-gradient-to-br from-violet-500 to-indigo-500"
         }`}>
-          {user.name.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
+          {(user.name || user.email).charAt(0).toUpperCase()}
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-white truncate">{user.name || "(no name)"}</p>
-            {isAdmin && (
-              <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Crown size={9} />Admin
-              </span>
-            )}
+            {isAdmin && <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1"><Crown size={9} />Admin</span>}
           </div>
           <p className="text-xs text-slate-400 truncate">{user.email}</p>
           <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500">
             <span className="flex items-center gap-1"><Calendar size={9} />Joined {timeAgo(user.createdAt)}</span>
-            <span className="flex items-center gap-1"><Clock size={9} />Last login: {timeAgo(user.lastLoginAt)}</span>
+            <span className="flex items-center gap-1"><Clock size={9} />Last: {timeAgo(user.lastLoginAt)}</span>
+            <span className="flex items-center gap-1"><Send size={9} />{batchCount} batches</span>
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-1">
           <button onClick={onResetPassword} className="p-2 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20" title="Reset password">
             <KeyRound size={14} />
@@ -330,25 +687,14 @@ function UserCard({ user, onResetPassword, onDelete, isResetting, newPassword, s
               <Trash2 size={14} />
             </button>
           )}
-          <button onClick={() => setExpanded(!expanded)} className="p-2 rounded-lg bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:text-violet-300">
-            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
         </div>
       </div>
 
-      {/* Reset password inline */}
       {isResetting && (
         <div className="px-4 pb-4 border-t border-slate-800/50 pt-4">
           <p className="text-xs font-semibold text-violet-300 mb-2">Set new password for {user.email}</p>
           <div className="flex gap-2">
-            <input
-              type="text"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="New password (min 6 chars)"
-              className="input-field flex-1 !text-xs"
-              autoFocus
-            />
+            <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (min 6 chars)" className="input-field flex-1 !text-xs" autoFocus />
             <button onClick={onConfirmReset} disabled={newPassword.length < 6} className="px-3 py-2 rounded-lg bg-violet-500/20 text-violet-300 border border-violet-500/40 text-xs font-semibold hover:bg-violet-500/30 disabled:opacity-50">
               <Check size={14} />
             </button>
@@ -356,16 +702,6 @@ function UserCard({ user, onResetPassword, onDelete, isResetting, newPassword, s
               <X size={14} />
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Expanded details */}
-      {expanded && (
-        <div className="px-4 pb-4 border-t border-slate-800/50 pt-4 grid grid-cols-2 gap-3">
-          <Detail label="Created" value={`${formatDate(user.createdAt)} ${formatTime(user.createdAt)}`} />
-          <Detail label="Last Login" value={user.lastLoginAt ? `${formatDate(user.lastLoginAt)} ${formatTime(user.lastLoginAt)}` : "Never"} />
-          <Detail label="Role" value={user.role} />
-          <Detail label="Session Length" value={user.sessionMaxAgeMs ? `${Math.round(user.sessionMaxAgeMs / 3600000)}h` : "Default (24h)"} />
         </div>
       )}
     </div>
@@ -376,7 +712,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-slate-800/30 rounded-lg p-2 border border-slate-700/30">
       <p className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</p>
-      <p className="text-xs text-slate-200 mt-0.5">{value}</p>
+      <p className="text-xs text-slate-200 mt-0.5 truncate">{value}</p>
     </div>
   );
 }

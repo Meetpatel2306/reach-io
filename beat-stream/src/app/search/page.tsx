@@ -49,6 +49,8 @@ function SearchInner() {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [lyricMatches, setLyricMatches] = useState<LyricMatch[]>([]);
+  // Subset of `songs` that smartSearch surfaced via LRCLIB lyric matching
+  const [lyricFoundIds, setLyricFoundIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -84,6 +86,7 @@ function SearchInner() {
       setAlbums(bundle.albums);
       setArtists(bundle.artists);
       setPlaylists(bundle.playlists);
+      setLyricFoundIds(bundle.lyricFound || []);
       setHasMore(bundle.songs.length >= 30);
       setLoading(false);
     }).catch(() => {
@@ -325,6 +328,22 @@ function SearchInner() {
                       </div>
                     </section>
                   )}
+                  {(() => {
+                    // Surface songs that came specifically from lyric matching
+                    // — usually songs the user typed a half-remembered lyric
+                    // for that wouldn't have shown up in the regular results.
+                    const lyricFoundSongs = songs.filter((s) => lyricFoundIds.includes(s.id)).slice(0, 6);
+                    if (lyricFoundSongs.length === 0) return null;
+                    return (
+                      <section>
+                        <h2 className="text-xl font-bold mb-3 flex items-center gap-2">
+                          <Quote className="w-5 h-5 text-accent" /> Found by lyrics
+                          <span className="text-xs font-normal text-secondary">songs whose lyrics matched your search</span>
+                        </h2>
+                        <div>{lyricFoundSongs.map((s, i) => <SongRow key={s.id} song={s} index={i} queue={lyricFoundSongs} />)}</div>
+                      </section>
+                    );
+                  })()}
                 </div>
               )}
               {tab === "songs" && (
