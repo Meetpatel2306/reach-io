@@ -13,6 +13,7 @@ import { saveToHistory } from "@/lib/history";
 import type { EmailResult } from "@/lib/history";
 import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate, BUNDLED_VERSION } from "@/lib/updater";
 import { loadOAuth, clearOAuth, consumeOAuthFragment, startOAuth, getValidAccessToken, type OAuthSession } from "@/lib/oauth";
+import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 
 interface Recipient { name: string; email: string; }
 interface SendResult { email: string; status: string; error?: string; }
@@ -154,6 +155,7 @@ export default function Home() {
   // App auth session (login/register)
   const [authUser, setAuthUser] = useState<{ email: string; name: string; role: "admin" | "user" } | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
   // Persist state to localStorage whenever key values change
   const persistState = useCallback(async () => {
@@ -208,8 +210,9 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load SMTP config: ONLY from localStorage (single source of truth)
+  // Load SMTP config: ONLY from localStorage. Wait for authReady so it's scoped to current user.
   useEffect(() => {
+    if (!authReady) return;
     const saved = loadSmtp();
     if (saved && saved.smtpUser && saved.smtpPass) {
       setSmtpUser(saved.smtpUser.trim());
@@ -219,14 +222,15 @@ export default function Home() {
       setSmtpSecurity(saved.smtpSecurity?.trim() || "starttls");
       setSmtpConfigured(true);
     }
-    // No env var fallback — user must configure via UI settings
-  }, []);
+  }, [authReady]);
 
   // OAuth error from URL (?oauth_error=...)
   const [oauthError, setOauthError] = useState<string>("");
 
   // Google OAuth: consume callback fragment + load saved session + handle errors
+  // Wait for authReady so localStorage has been scoped to the current user first
   useEffect(() => {
+    if (!authReady) return;
     const fromFragment = consumeOAuthFragment();
     if (fromFragment) {
       setOauthSession(fromFragment);
@@ -240,7 +244,6 @@ export default function Home() {
       }
     }
 
-    // Show OAuth error from query string
     const params = new URLSearchParams(window.location.search);
     const err = params.get("oauth_error");
     if (err) {
@@ -250,17 +253,23 @@ export default function Home() {
       url.searchParams.delete("oauth_error");
       history.replaceState(null, "", url.toString());
     }
-  }, []);
+  }, [authReady]);
 
-  // Load current logged-in user
+  // Load current logged-in user + sync localStorage to this user.
+  // CRITICAL: this must run BEFORE any other localStorage reads (OAuth, SMTP, history)
+  // to prevent showing leftover data from a previous user on the same browser.
   useEffect(() => {
     fetch("/api/auth/me").then((r) => r.json()).then((data) => {
+      const userEmail = data.user?.email || null;
+      syncCurrentUser(userEmail);
       if (data.user) setAuthUser(data.user);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setAuthReady(true));
   }, []);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    // Clear ALL per-user data so the next login on this browser starts clean
+    clearUserData();
     window.location.href = "/login";
   };
 

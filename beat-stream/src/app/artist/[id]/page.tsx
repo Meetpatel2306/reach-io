@@ -13,6 +13,7 @@ import { ArtistCard } from "@/components/ArtistCard";
 import { songCache } from "@/lib/storage";
 import { useCached, cached, TTL } from "@/lib/cache";
 import { ytSearchSongs } from "@/lib/youtubeMusic";
+import { itunesArtistSongs } from "@/lib/itunes";
 
 // Initial fetch grabs 5 pages of songs (~50 tracks) and 3 pages of albums (~30
 // albums) in parallel — Saavn paginates aggressively so a single page only
@@ -29,7 +30,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
     albums: Album[];
     songTotal: number;
     albumTotal: number;
-  }>(`artist-deep:v2:${id}`, TTL.artist, async () => {
+  }>(`artist-deep:v3:${id}`, TTL.artist, async () => {
     const [a, songPages, albumPages] = await Promise.all([
       api.getArtist(id),
       Promise.all(INITIAL_SONG_PAGES.map((p) =>
@@ -47,29 +48,43 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
     for (const page of songPages) for (const s of (page.songs || [])) songMap.set(s.id, s);
 
     // Foreign / Western artists have shallow Saavn catalogs (Ed Sheeran has
-    // ~30 songs on Saavn vs 200+ for Indian artists). Also pull from YouTube
-    // Music to bulk out the catalog. We only run this if Saavn returned a
-    // thin list — for big Indian artists it'd just add noise.
+    // ~30 songs on Saavn vs 200+ for Indian artists). When Saavn comes back
+    // thin we fan out to TWO additional sources in parallel:
+    //
+    //   1. iTunes Search API — most reliable, has the full Western catalog
+    //      with proper metadata (album, year, artwork, duration). Songs
+    //      synthesize as `itunes:<id>` and resolve to a YouTube audio stream
+    //      at play-time via PlayerContext.
+    //   2. YouTube Music (via Piped) — best when iTunes misses something
+    //      niche or a remix
     const SAAVN_THIN = 30;
     if (songMap.size < SAAVN_THIN && a.name) {
-      try {
-        const yt = await cached(`yt-artist:${a.name.toLowerCase()}`, TTL.artist,
-          () => ytSearchSongs(`${a.name} songs`, 40));
-        // Filter to songs where the primary artist matches this artist (case-insensitive substring),
-        // so unrelated YT hits don't pollute the page.
-        const aName = a.name.toLowerCase().trim();
-        for (const s of yt) {
-          const primary = s.artists?.primary?.[0]?.name?.toLowerCase() || "";
-          if (!primary.includes(aName) && !aName.includes(primary)) continue;
-          // Dedupe by normalized song name + artist (YT may have a different id from any Saavn equivalent)
-          const key = `${(s.name || "").toLowerCase().trim()}::${primary}`;
-          const dup = Array.from(songMap.values()).some((existing) => {
-            const ek = `${(existing.name || "").toLowerCase().trim()}::${(existing.artists?.primary?.[0]?.name || "").toLowerCase().trim()}`;
-            return ek === key;
-          });
-          if (!dup) songMap.set(s.id, s);
-        }
-      } catch {}
+      const aName = a.name.toLowerCase().trim();
+      const dedupeKey = (s: Song) =>
+        `${(s.name || "").toLowerCase().trim()}::${(s.artists?.primary?.[0]?.name || "").toLowerCase().trim()}`;
+      const haveKeys = new Set(Array.from(songMap.values()).map(dedupeKey));
+
+      const [itunes, yt] = await Promise.all([
+        cached(`it-artist:${aName}`, TTL.artist, () => itunesArtistSongs(a.name, 100)).catch(() => [] as Song[]),
+        cached(`yt-artist:${aName}`, TTL.artist, () => ytSearchSongs(`${a.name} songs`, 40)).catch(() => [] as Song[]),
+      ]);
+
+      // iTunes first (richer metadata)
+      for (const s of itunes) {
+        const k = dedupeKey(s);
+        if (haveKeys.has(k)) continue;
+        haveKeys.add(k);
+        songMap.set(s.id, s);
+      }
+      // Then YouTube — filter to artist-name matches so noise stays out
+      for (const s of yt) {
+        const primary = s.artists?.primary?.[0]?.name?.toLowerCase() || "";
+        if (primary && !primary.includes(aName) && !aName.includes(primary)) continue;
+        const k = dedupeKey(s);
+        if (haveKeys.has(k)) continue;
+        haveKeys.add(k);
+        songMap.set(s.id, s);
+      }
     }
 
     // Same for albums

@@ -11,7 +11,8 @@ import { prefetch } from "@/lib/prefetch";
 import { cached, TTL } from "@/lib/cache";
 import { buildRelatedQueue } from "@/lib/related";
 import { smartShuffle } from "@/lib/recommend";
-import { hydrateYtSong } from "@/lib/youtubeMusic";
+import { hydrateYtSong, ytSearchSongs, resolveYtStreamUrl } from "@/lib/youtubeMusic";
+import { resolveItunesStream } from "@/lib/itunes";
 import { useSettings } from "./SettingsContext";
 
 type Repeat = "off" | "all" | "one";
@@ -378,18 +379,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // URLs expire (~6h) so we resolve fresh via Piped's /streams endpoint,
   // cached at a short TTL.
   const ensureFullSong = useCallback(async (song: Song, forceRefresh = false): Promise<Song> => {
+    // YouTube-sourced song with a known video id → resolve via Piped
     if (song.source === "youtube" && song.ytId) {
-      // 4-hour TTL keeps the URL warm but lets it refresh well before expiry.
       const YT_TTL = 4 * 60 * 60 * 1000;
       try {
         const key = `yt-stream:${song.ytId}`;
         const fetcher = () => hydrateYtSong(song);
-        const hydrated = forceRefresh
-          ? await fetcher()
-          : await cached(key, YT_TTL, fetcher);
-        if (hydrated.downloadUrl?.length) {
-          songCache.put(hydrated);
-          return hydrated;
+        const hydrated = forceRefresh ? await fetcher() : await cached(key, YT_TTL, fetcher);
+        if (hydrated.downloadUrl?.length) { songCache.put(hydrated); return hydrated; }
+      } catch {}
+      return song;
+    }
+    // iTunes-sourced song (metadata only) → search YouTube for matching audio
+    if (song.id?.startsWith("itunes:")) {
+      const YT_TTL = 4 * 60 * 60 * 1000;
+      try {
+        const url = forceRefresh
+          ? await resolveItunesStream(song)
+          : await cached(`it-stream:${song.id}`, YT_TTL, () => resolveItunesStream(song));
+        if (url) {
+          const full: Song = { ...song, downloadUrl: [{ quality: "160kbps", url }] };
+          songCache.put(full);
+          return full;
         }
       } catch {}
       return song;
