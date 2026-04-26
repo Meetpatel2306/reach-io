@@ -38,6 +38,7 @@ const faqs = [
 export default function GuidePage() {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [activeProvider, setActiveProvider] = useState("gmail");
+  const [activePlatform, setActivePlatform] = useState("ios");
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-4xl mx-auto">
@@ -77,6 +78,240 @@ export default function GuidePage() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Install App Guide */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Smartphone size={20} className="text-violet-400" />
+          Install Email Blaster Pro
+        </h2>
+        <p className="text-sm text-slate-400 mb-4">Install as a native app for the best experience — works offline, faster loading, and feels like a real app.</p>
+
+        {/* Platform selector */}
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          {[
+            { id: "ios", name: "iPhone / iPad", icon: Apple, color: "from-slate-400 to-slate-200", border: "border-slate-400/40", text: "text-white", bg: "bg-slate-500/10" },
+            { id: "android", name: "Android", icon: Smartphone, color: "from-emerald-500 to-green-500", border: "border-emerald-500/40", text: "text-emerald-300", bg: "bg-emerald-500/10" },
+            { id: "desktop", name: "Desktop", icon: Monitor, color: "from-blue-500 to-indigo-500", border: "border-blue-500/40", text: "text-blue-300", bg: "bg-blue-500/10" },
+          ].map((p) => {
+            const Icon = p.icon;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setActivePlatform(p.id)}
+                className={`rounded-xl p-4 border text-center transition-all ${
+                  activePlatform === p.id
+                    ? `${p.bg} ${p.border}`
+                    : "bg-slate-800/30 border-slate-700/30 hover:border-slate-600/50"
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${p.color} flex items-center justify-center mx-auto mb-2`}>
+                  <Icon size={18} className="text-white" />
+                </div>
+                <p className={`text-sm font-semibold ${activePlatform === p.id ? p.text : "text-slate-400"}`}>{p.name}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* iOS Install */}
+        {activePlatform === "ios" && (
+          <div className="glass-card !border-slate-400/20">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-400 to-slate-200 flex items-center justify-center">
+                <Apple size={20} className="text-slate-900" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Install on iPhone / iPad</h3>
+                <p className="text-xs text-slate-500">Use Safari — Chrome won't work for installation</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 mb-5 flex items-start gap-3">
+              <AlertTriangle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-300/80"><strong>Important:</strong> You must use Safari on iOS. Chrome and other browsers don't support PWA installation on iPhone.</p>
+            </div>
+
+            <div className="space-y-3 mb-5">
+              {[
+                { num: 1, icon: Mail, title: "Open this app in Safari", desc: "If you're not in Safari, copy the URL and paste in Safari", color: "from-slate-400 to-slate-200" },
+                { num: 2, icon: Share, title: "Tap the Share button", desc: "Square icon with arrow at bottom of Safari (or top on iPad)", color: "from-blue-500 to-cyan-500" },
+                { num: 3, icon: Plus, title: "Scroll down & tap \"Add to Home Screen\"", desc: "You may need to scroll past the app share row", color: "from-violet-500 to-indigo-500" },
+                { num: 4, icon: Check, title: "Tap \"Add\" in the top-right", desc: "App name will be \"Email Blaster\" — you can rename it here", color: "from-emerald-500 to-green-500" },
+                { num: 5, icon: Smartphone, title: "Find on Home Screen", desc: "Open it like any other app — full-screen, no Safari bars", color: "from-amber-500 to-orange-500" },
+              ].map((s) => {
+                const Icon = s.icon;
+                return (
+                  <div key={s.num} className="flex items-start gap-3 bg-slate-800/30 rounded-xl p-3 border border-slate-700/20">
+                    <span className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.color} text-white text-xs font-bold flex items-center justify-center shrink-0`}>{s.num}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon size={14} className="text-violet-400" />
+                        <p className="text-sm font-semibold text-white">{s.title}</p>
+                      </div>
+                      <p className="text-xs text-slate-400">{s.desc}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-400/10">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Why Install?</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "Full Screen", value: "No Safari bars", color: "text-emerald-300" },
+                  { label: "Home Screen Icon", value: "Quick access", color: "text-blue-300" },
+                  { label: "Offline Support", value: "Works without internet", color: "text-violet-300" },
+                  { label: "Faster Launch", value: "Instant load time", color: "text-amber-300" },
+                ].map((c, i) => (
+                  <div key={i} className="bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-700/30">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">{c.label}</p>
+                    <p className={`text-xs font-medium ${c.color}`}>{c.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Android Install */}
+        {activePlatform === "android" && (
+          <div className="glass-card !border-emerald-500/20">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center">
+                <Smartphone size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Install on Android</h3>
+                <p className="text-xs text-slate-500">One-tap install in Chrome, Edge, or Samsung Internet</p>
+              </div>
+            </div>
+
+            <div className="bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-3 mb-5 flex items-start gap-3">
+              <Zap size={16} className="text-emerald-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-emerald-300/80"><strong>Easy mode:</strong> Look for the &quot;Install&quot; button at the top of this app — tap it for one-tap install. The instructions below are a backup if it doesn&apos;t appear.</p>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-3 uppercase tracking-wider">Manual install (if Install button isn&apos;t showing)</p>
+
+            <div className="space-y-3 mb-5">
+              {[
+                { num: 1, icon: Mail, title: "Open in Chrome (or Edge / Samsung Internet)", desc: "These browsers fully support PWA installation", color: "from-emerald-500 to-green-500" },
+                { num: 2, icon: MoreVertical, title: "Tap the menu (⋮) icon", desc: "Three vertical dots, top-right corner of browser", color: "from-blue-500 to-cyan-500" },
+                { num: 3, icon: Plus, title: "Tap \"Install app\" or \"Add to Home Screen\"", desc: "Different browsers use slightly different wording", color: "from-violet-500 to-indigo-500" },
+                { num: 4, icon: Download, title: "Confirm installation", desc: "Tap \"Install\" in the popup that appears", color: "from-amber-500 to-orange-500" },
+                { num: 5, icon: Check, title: "App appears in your app drawer", desc: "Open from home screen or app drawer like any other app", color: "from-pink-500 to-red-500" },
+              ].map((s) => {
+                const Icon = s.icon;
+                return (
+                  <div key={s.num} className="flex items-start gap-3 bg-slate-800/30 rounded-xl p-3 border border-slate-700/20">
+                    <span className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.color} text-white text-xs font-bold flex items-center justify-center shrink-0`}>{s.num}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon size={14} className="text-violet-400" />
+                        <p className="text-sm font-semibold text-white">{s.title}</p>
+                      </div>
+                      <p className="text-xs text-slate-400">{s.desc}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-slate-900/50 rounded-xl p-4 border border-emerald-500/10">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Android Features</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "App Drawer", value: "Like Play Store apps", color: "text-emerald-300" },
+                  { label: "Notifications", value: "Push support enabled", color: "text-blue-300" },
+                  { label: "Shortcuts", value: "Long-press for actions", color: "text-violet-300" },
+                  { label: "Offline Cache", value: "Works without WiFi", color: "text-amber-300" },
+                ].map((c, i) => (
+                  <div key={i} className="bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-700/30">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">{c.label}</p>
+                    <p className={`text-xs font-medium ${c.color}`}>{c.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Desktop Install */}
+        {activePlatform === "desktop" && (
+          <div className="glass-card !border-blue-500/20">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
+                <Monitor size={20} className="text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Install on Desktop</h3>
+                <p className="text-xs text-slate-500">Windows, Mac, or Linux — Chrome / Edge / Brave</p>
+              </div>
+            </div>
+
+            <div className="bg-blue-500/5 border border-blue-500/15 rounded-xl p-3 mb-5 flex items-start gap-3">
+              <Zap size={16} className="text-blue-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-blue-300/80"><strong>Quickest way:</strong> Look for the install icon (⊕) in the address bar — it appears automatically when the app is installable. Click it for instant install.</p>
+            </div>
+
+            <div className="space-y-3 mb-5">
+              {[
+                { num: 1, icon: Mail, title: "Open in Chrome, Edge, or Brave", desc: "Safari and Firefox don't support PWA install on desktop", color: "from-blue-500 to-indigo-500" },
+                { num: 2, icon: Plus, title: "Look for the install icon (⊕) in address bar", desc: "On the right side, before the bookmarks star", color: "from-cyan-500 to-blue-500" },
+                { num: 3, icon: Download, title: "Or use the menu — File → Install app", desc: "Alternative: three-dot menu → Save and share → Install", color: "from-violet-500 to-blue-500" },
+                { num: 4, icon: Check, title: "Click \"Install\" in the popup", desc: "App opens in its own window, no browser tabs", color: "from-emerald-500 to-cyan-500" },
+                { num: 5, icon: Monitor, title: "Add shortcut to taskbar / Dock", desc: "Right-click app icon to pin for quick access", color: "from-amber-500 to-orange-500" },
+              ].map((s) => {
+                const Icon = s.icon;
+                return (
+                  <div key={s.num} className="flex items-start gap-3 bg-slate-800/30 rounded-xl p-3 border border-slate-700/20">
+                    <span className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.color} text-white text-xs font-bold flex items-center justify-center shrink-0`}>{s.num}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon size={14} className="text-violet-400" />
+                        <p className="text-sm font-semibold text-white">{s.title}</p>
+                      </div>
+                      <p className="text-xs text-slate-400">{s.desc}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-slate-900/50 rounded-xl p-4 border border-blue-500/10">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Desktop Benefits</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: "Standalone Window", value: "No browser UI", color: "text-blue-300" },
+                  { label: "Taskbar / Dock", value: "Pin like native app", color: "text-violet-300" },
+                  { label: "Fast Switching", value: "Alt+Tab support", color: "text-emerald-300" },
+                  { label: "Auto-Updates", value: "Background updates", color: "text-amber-300" },
+                ].map((c, i) => (
+                  <div key={i} className="bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-700/30">
+                    <p className="text-[10px] text-slate-500 uppercase tracking-wider">{c.label}</p>
+                    <p className={`text-xs font-medium ${c.color}`}>{c.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* After install info card */}
+        <div className="mt-4 bg-gradient-to-br from-violet-500/10 to-indigo-500/10 border border-violet-500/20 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center shrink-0">
+              <Zap size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white mb-1">After Installing — Auto-Updates</p>
+              <p className="text-xs text-slate-400 leading-relaxed">The app updates automatically when new versions ship. You&apos;ll see a notification banner, or it&apos;ll silently install when you reopen the app. Your SMTP credentials, send history, and drafts are always preserved.</p>
+            </div>
+          </div>
         </div>
       </div>
 
