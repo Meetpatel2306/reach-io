@@ -4,12 +4,14 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, Shield, Users, Search, Trash2, KeyRound, Crown, Calendar,
+  ArrowLeft, Shield, ShieldOff, Users, Search, Trash2, KeyRound, Crown, Calendar,
   Mail, Loader2, Check, X, AlertOctagon, Send, BarChart3, Activity,
   Filter, RefreshCw, ChevronDown, ChevronUp, UserPlus, Clock,
   Layers, TrendingUp, Zap, Eye, Paperclip, ExternalLink, Inbox,
   MessageSquare, User as UserIcon, Reply
 } from "lucide-react";
+
+const PRIMARY_ADMIN_EMAIL = "meetpatel4384@gmail.com";
 
 interface User {
   email: string;
@@ -87,6 +89,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
+  const [currentAdminEmail, setCurrentAdminEmail] = useState<string>("");
   const [users, setUsers] = useState<User[]>([]);
   const [batches, setBatches] = useState<ServerBatch[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -112,6 +115,7 @@ export default function AdminPage() {
           router.push("/login");
           return;
         }
+        setCurrentAdminEmail(me.user.email || "");
         setAuthorized(true);
         await loadAll();
       } catch {
@@ -160,6 +164,28 @@ export default function AdminPage() {
       });
       await loadAll();
     } catch {}
+  };
+
+  const handlePromote = async (email: string) => {
+    const res = await fetch("/api/admin/promote-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    setActionMsg(data.message || data.error || "");
+    if (res.ok) await loadAll();
+  };
+
+  const handleDemote = async (email: string) => {
+    const res = await fetch("/api/admin/demote-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    setActionMsg(data.message || data.error || "");
+    if (res.ok) await loadAll();
   };
 
   const handleResetPassword = async (email: string) => {
@@ -506,8 +532,11 @@ export default function AdminPage() {
                   key={user.email}
                   user={user}
                   batchCount={batches.filter((b) => b.userEmail === user.email).length}
+                  currentAdminEmail={currentAdminEmail}
                   onResetPassword={() => { setResettingEmail(user.email); setNewPassword(""); }}
                   onDelete={() => setConfirmDelete(user.email)}
+                  onPromote={() => handlePromote(user.email)}
+                  onDemote={() => handleDemote(user.email)}
                   isResetting={resettingEmail === user.email}
                   newPassword={newPassword}
                   setNewPassword={setNewPassword}
@@ -893,8 +922,11 @@ function BatchRow({ batch, expanded, onToggle }: BatchRowProps) {
 interface UserCardProps {
   user: User;
   batchCount: number;
+  currentAdminEmail: string;
   onResetPassword: () => void;
   onDelete: () => void;
+  onPromote: () => void;
+  onDemote: () => void;
   isResetting: boolean;
   newPassword: string;
   setNewPassword: (p: string) => void;
@@ -902,8 +934,11 @@ interface UserCardProps {
   onCancelReset: () => void;
 }
 
-function UserCard({ user, batchCount, onResetPassword, onDelete, isResetting, newPassword, setNewPassword, onConfirmReset, onCancelReset }: UserCardProps) {
+function UserCard({ user, batchCount, currentAdminEmail, onResetPassword, onDelete, onPromote, onDemote, isResetting, newPassword, setNewPassword, onConfirmReset, onCancelReset }: UserCardProps) {
   const isAdmin = user.role === "admin";
+  const isSelf = user.email.toLowerCase() === currentAdminEmail.toLowerCase();
+  const isPrimaryAdmin = user.email.toLowerCase() === PRIMARY_ADMIN_EMAIL.toLowerCase();
+  const canModify = !isSelf && !isPrimaryAdmin;
 
   return (
     <div className={`glass-card !p-0 overflow-hidden ${isAdmin ? "!border-amber-500/30" : ""}`}>
@@ -915,9 +950,11 @@ function UserCard({ user, batchCount, onResetPassword, onDelete, isResetting, ne
         </div>
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-bold text-white truncate">{user.name || "(no name)"}</p>
             {isAdmin && <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1"><Crown size={9} />Admin</span>}
+            {isSelf && <span className="text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full">You</span>}
+            {isPrimaryAdmin && <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">Primary</span>}
           </div>
           <p className="text-xs text-slate-400 truncate">{user.email}</p>
           <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500">
@@ -931,7 +968,17 @@ function UserCard({ user, batchCount, onResetPassword, onDelete, isResetting, ne
           <button onClick={onResetPassword} className="p-2 rounded-lg bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20" title="Reset password">
             <KeyRound size={14} />
           </button>
-          {!isAdmin && (
+          {canModify && !isAdmin && (
+            <button onClick={onPromote} className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20" title="Promote to admin">
+              <Shield size={14} />
+            </button>
+          )}
+          {canModify && isAdmin && (
+            <button onClick={onDemote} className="p-2 rounded-lg bg-slate-500/10 text-slate-400 border border-slate-500/20 hover:bg-slate-500/20" title="Demote to user">
+              <ShieldOff size={14} />
+            </button>
+          )}
+          {canModify && (
             <button onClick={onDelete} className="p-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20" title="Delete user">
               <Trash2 size={14} />
             </button>
