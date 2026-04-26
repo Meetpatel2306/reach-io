@@ -21,8 +21,20 @@ interface KvLike {
 let kvClient: KvLike | null = null;
 let memStore: Record<string, unknown> | null = null;
 
+// Read either KV_* (Vercel KV) or UPSTASH_REDIS_REST_* (Upstash direct) env vars.
+// Auto-bridge: if only UPSTASH_* are present, alias them to KV_* so @vercel/kv works.
+function ensureKvEnvAliased() {
+  if (!process.env.KV_REST_API_URL && process.env.UPSTASH_REDIS_REST_URL) {
+    process.env.KV_REST_API_URL = process.env.UPSTASH_REDIS_REST_URL;
+  }
+  if (!process.env.KV_REST_API_TOKEN && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    process.env.KV_REST_API_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+  }
+}
+
 async function getKv(): Promise<KvLike | null> {
   if (kvClient) return kvClient;
+  ensureKvEnvAliased();
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) return null;
   try {
     const mod = await import("@vercel/kv");
@@ -91,5 +103,7 @@ export async function kvKeys(pattern: string): Promise<string[]> {
 }
 
 export function isKvConfigured(): boolean {
-  return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  return !!(url && token);
 }

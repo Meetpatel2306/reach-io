@@ -1,4 +1,4 @@
-const CACHE_NAME = "beatstream-v20";
+const CACHE_NAME = "beatstream-v22";
 const API_CACHE = "beatstream-api-v3";
 const IMAGE_CACHE = "beatstream-images-v3";
 const OFFLINE_URL = "/";

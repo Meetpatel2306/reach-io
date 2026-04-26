@@ -270,15 +270,24 @@ async function expandTopArtists(
     didYouMean = { name: top.artist.name, query: top.artist.name };
   }
 
-  const lists = await Promise.all(
-    scored.map(({ artist }) =>
-      cached(`artist-songs:${artist.id}:0`, TTL.artist, () => api.getArtistSongs(artist.id, 0))
-        .then((r) => r.songs || [])
-        .catch(() => [] as Song[])
-    )
+  // Each page returns ~10 songs. Fetch pages 0-4 in parallel per artist (~50
+  // songs per artist) so big-name searches like "diljit dosanjh" actually pull
+  // the full catalog instead of just the top 10.
+  const PAGES = [0, 1, 2, 3, 4];
+  const pageGroups = await Promise.all(
+    scored.map(async ({ artist }) => {
+      const pageResults = await Promise.all(
+        PAGES.map((p) =>
+          cached(`artist-songs:${artist.id}:${p}`, TTL.artist, () => api.getArtistSongs(artist.id, p))
+            .then((r) => r.songs || [])
+            .catch(() => [] as Song[])
+        )
+      );
+      return pageResults.flat();
+    })
   );
   const songs: Song[] = [];
   const seen = new Set<string>();
-  for (const list of lists) for (const s of list) if (!seen.has(s.id)) { seen.add(s.id); songs.push(s); }
+  for (const list of pageGroups) for (const s of list) if (!seen.has(s.id)) { seen.add(s.id); songs.push(s); }
   return { songs, didYouMean };
 }

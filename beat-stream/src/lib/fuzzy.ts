@@ -30,9 +30,14 @@ export function editDistance(a: string, b: string, cap = 4): number {
   return dp[b.length];
 }
 
+// Common suffixes that get truncated in casual typing. "diljit dosan" is
+// missing "jh"; "arijid" is missing "t" (Arijit); etc. We try appending
+// these to short-looking tokens.
+const COMMON_SUFFIXES = ["jh", "h", "t", "th", "n", "an", "ar", "er", "es", "y", "ya", "ah"];
+
 /** Generate spelling variants for a query token. */
 function variantsForToken(t: string): string[] {
-  if (t.length < 4) return [t];
+  if (t.length < 3) return [t];
   const out = new Set<string>([t]);
   // Double-letter insertions / removals (very common in name typos)
   for (let i = 0; i < t.length - 1; i++) {
@@ -59,22 +64,33 @@ function variantsForToken(t: string): string[] {
   for (const [from, to] of VOWEL_SUBS) {
     if (t.includes(from)) out.add(t.replace(from, to));
   }
-  return Array.from(out).slice(0, 8);
+  // Suffix appending — handles truncated names like "dosan" → "dosanjh"
+  for (const s of COMMON_SUFFIXES) out.add(t + s);
+  // Last-character drop — handles extra letters like "arijitt" → "arijit"
+  if (t.length > 4) out.add(t.slice(0, -1));
+  return Array.from(out);
 }
 
-/** Generate up to 6 plausible re-spellings of a multi-word query. */
-export function fuzzyVariants(query: string, max = 6): string[] {
+/** Generate up to N plausible re-spellings of a multi-word query. */
+export function fuzzyVariants(query: string, max = 8): string[] {
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!tokens.length) return [];
   if (tokens.length === 1) return variantsForToken(tokens[0]).slice(0, max);
-  // Fuzz only the longest token (usually the most distinctive one)
-  const longestIdx = tokens.reduce((best, t, i) => t.length > tokens[best].length ? i : best, 0);
-  const fuzzed = variantsForToken(tokens[longestIdx]);
+
+  // Fuzz EVERY token of length ≥ 3 (each in turn). For "diljit dosan" this
+  // produces variants of both "diljit" AND "dosan", so the typo "dosan" →
+  // "dosanjh" is caught even though "diljit" is the longer token.
   const out = new Set<string>();
-  for (const v of fuzzed) {
-    const copy = tokens.slice();
-    copy[longestIdx] = v;
-    out.add(copy.join(" "));
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].length < 3) continue;
+    const fz = variantsForToken(tokens[i]);
+    for (const v of fz) {
+      if (v === tokens[i]) continue;
+      const copy = tokens.slice();
+      copy[i] = v;
+      out.add(copy.join(" "));
+      if (out.size >= max) break;
+    }
     if (out.size >= max) break;
   }
   return Array.from(out);

@@ -1,6 +1,6 @@
 "use client";
 import { use, useEffect, useState } from "react";
-import { Play, Loader2, BadgeCheck, UserPlus, UserCheck, Radio } from "lucide-react";
+import { Play, Loader2, BadgeCheck, UserPlus, UserCheck, Radio, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Artist, Song, Album } from "@/lib/types";
 import { decodeHtml, pickImage } from "@/lib/utils";
@@ -11,28 +11,127 @@ import { SongRow } from "@/components/SongRow";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { songCache } from "@/lib/storage";
-import { useCached, TTL } from "@/lib/cache";
+import { useCached, cached, TTL } from "@/lib/cache";
+
+// Initial fetch grabs 5 pages of songs (~50 tracks) and 3 pages of albums (~30
+// albums) in parallel — Saavn paginates aggressively so a single page only
+// returns ~10 items. "Load more" extends from there.
+const INITIAL_SONG_PAGES = [0, 1, 2, 3, 4];
+const INITIAL_ALBUM_PAGES = [0, 1, 2];
+const LOAD_MORE_PAGES_AT_A_TIME = 5;
 
 export default function ArtistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: bundle, isLoading } = useCached<{ artist: Artist; songs: Song[]; albums: Album[] }>(`artist:${id}`, TTL.artist, async () => {
-    const [a, s, al] = await Promise.all([
+  const { data: bundle, isLoading } = useCached<{
+    artist: Artist;
+    songs: Song[];
+    albums: Album[];
+    songTotal: number;
+    albumTotal: number;
+  }>(`artist-deep:${id}`, TTL.artist, async () => {
+    const [a, songPages, albumPages] = await Promise.all([
       api.getArtist(id),
-      api.getArtistSongs(id, 0).catch(() => ({ songs: [] as Song[], total: 0 })),
-      api.getArtistAlbums(id, 0).catch(() => ({ albums: [] as Album[], total: 0 })),
+      Promise.all(INITIAL_SONG_PAGES.map((p) =>
+        cached(`artist-songs:${id}:${p}`, TTL.artist, () => api.getArtistSongs(id, p))
+          .catch(() => ({ songs: [] as Song[], total: 0 }))
+      )),
+      Promise.all(INITIAL_ALBUM_PAGES.map((p) =>
+        cached(`artist-albums:${id}:${p}`, TTL.artist, () => api.getArtistAlbums(id, p))
+          .catch(() => ({ albums: [] as Album[], total: 0 }))
+      )),
     ]);
-    const allSongs = a.topSongs?.length ? a.topSongs : s.songs;
-    return { artist: a, songs: allSongs, albums: a.topAlbums?.length ? a.topAlbums : al.albums };
+    // Merge + dedupe songs across pages
+    const songMap = new Map<string, Song>();
+    if (a.topSongs) for (const s of a.topSongs) songMap.set(s.id, s);
+    for (const page of songPages) for (const s of (page.songs || [])) songMap.set(s.id, s);
+    // Same for albums
+    const albumMap = new Map<string, Album>();
+    if (a.topAlbums) for (const al of a.topAlbums) albumMap.set(al.id, al);
+    for (const page of albumPages) for (const al of (page.albums || [])) albumMap.set(al.id, al);
+    return {
+      artist: a,
+      songs: Array.from(songMap.values()),
+      albums: Array.from(albumMap.values()),
+      songTotal: songPages[0]?.total || songMap.size,
+      albumTotal: albumPages[0]?.total || albumMap.size,
+    };
   });
+
   const artist = bundle?.artist || null;
-  const songs = bundle?.songs || [];
-  const albums = bundle?.albums || [];
-  const [showAllSongs, setShowAllSongs] = useState(false);
+  const initialSongs = bundle?.songs || [];
+  const initialAlbums = bundle?.albums || [];
+  const songTotal = bundle?.songTotal || 0;
+  const albumTotal = bundle?.albumTotal || 0;
+
+  // Extra pages loaded via "Load more"
+  const [extraSongs, setExtraSongs] = useState<Song[]>([]);
+  const [extraAlbums, setExtraAlbums] = useState<Album[]>([]);
+  const [songCursor, setSongCursor] = useState(INITIAL_SONG_PAGES.length);
+  const [albumCursor, setAlbumCursor] = useState(INITIAL_ALBUM_PAGES.length);
+  const [loadingMoreSongs, setLoadingMoreSongs] = useState(false);
+  const [loadingMoreAlbums, setLoadingMoreAlbums] = useState(false);
+
+  // Reset extras when navigating between artists
+  useEffect(() => {
+    setExtraSongs([]); setExtraAlbums([]);
+    setSongCursor(INITIAL_SONG_PAGES.length);
+    setAlbumCursor(INITIAL_ALBUM_PAGES.length);
+  }, [id]);
+
+  const songs = (() => {
+    const seen = new Set<string>();
+    const out: Song[] = [];
+    for (const s of [...initialSongs, ...extraSongs]) {
+      if (s?.id && !seen.has(s.id)) { seen.add(s.id); out.push(s); }
+    }
+    return out;
+  })();
+
+  const albums = (() => {
+    const seen = new Set<string>();
+    const out: Album[] = [];
+    for (const al of [...initialAlbums, ...extraAlbums]) {
+      if (al?.id && !seen.has(al.id)) { seen.add(al.id); out.push(al); }
+    }
+    return out;
+  })();
+
+  const [showAllSongs, setShowAllSongs] = useState(true);
   const player = usePlayer();
   const { isFollowedArtist, toggleFollowedArtist } = useLibrary();
   const { toast } = useToast();
 
-  useEffect(() => { if (songs.length) songCache.putMany(songs); }, [songs]);
+  useEffect(() => { if (songs.length) songCache.putMany(songs); }, [songs.length]);
+
+  async function loadMoreSongs() {
+    if (loadingMoreSongs) return;
+    setLoadingMoreSongs(true);
+    const pages = Array.from({ length: LOAD_MORE_PAGES_AT_A_TIME }, (_, i) => songCursor + i);
+    const results = await Promise.all(pages.map((p) =>
+      cached(`artist-songs:${id}:${p}`, TTL.artist, () => api.getArtistSongs(id, p))
+        .catch(() => ({ songs: [] as Song[], total: 0 }))
+    ));
+    const newOnes = results.flatMap((r) => r.songs || []);
+    setExtraSongs((prev) => [...prev, ...newOnes]);
+    setSongCursor((c) => c + LOAD_MORE_PAGES_AT_A_TIME);
+    setLoadingMoreSongs(false);
+    if (!newOnes.length) toast("No more songs", "info");
+  }
+
+  async function loadMoreAlbums() {
+    if (loadingMoreAlbums) return;
+    setLoadingMoreAlbums(true);
+    const pages = Array.from({ length: LOAD_MORE_PAGES_AT_A_TIME }, (_, i) => albumCursor + i);
+    const results = await Promise.all(pages.map((p) =>
+      cached(`artist-albums:${id}:${p}`, TTL.artist, () => api.getArtistAlbums(id, p))
+        .catch(() => ({ albums: [] as Album[], total: 0 }))
+    ));
+    const newOnes = results.flatMap((r) => r.albums || []);
+    setExtraAlbums((prev) => [...prev, ...newOnes]);
+    setAlbumCursor((c) => c + LOAD_MORE_PAGES_AT_A_TIME);
+    setLoadingMoreAlbums(false);
+    if (!newOnes.length) toast("No more albums", "info");
+  }
 
   if (isLoading && !artist) return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
   if (!artist) return <div className="p-8 text-center text-secondary">Artist not found</div>;
@@ -40,6 +139,8 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
   const followed = isFollowedArtist(artist.id);
   const visibleSongs = showAllSongs ? songs : songs.slice(0, 10);
   const bio = Array.isArray(artist.bio) ? artist.bio.map((b) => b.text).join("\n\n") : artist.bio;
+  const moreSongsAvailable = songTotal === 0 || songs.length < songTotal;
+  const moreAlbumsAvailable = albumTotal === 0 || albums.length < albumTotal;
 
   return (
     <div className="fade-in">
@@ -79,22 +180,48 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
 
       {songs.length > 0 && (
         <section className="px-4 md:px-8 lg:px-12 mb-10">
-          <h2 className="section-title mb-3">Popular</h2>
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="section-title">Songs</h2>
+            <span className="text-xs text-secondary">
+              {songs.length}{songTotal > 0 ? ` of ${songTotal}` : ""}
+            </span>
+          </div>
           <div>{visibleSongs.map((s, i) => <SongRow key={s.id} song={s} index={i} queue={songs} />)}</div>
-          {songs.length > 10 && (
-            <button onClick={() => setShowAllSongs(!showAllSongs)} className="text-sm text-secondary hover:text-white mt-3 font-bold uppercase tracking-wider">
-              {showAllSongs ? "Show less" : "See more"}
-            </button>
-          )}
+          <div className="flex items-center gap-3 mt-3">
+            {songs.length > 10 && (
+              <button onClick={() => setShowAllSongs(!showAllSongs)} className="text-sm text-secondary hover:text-white font-bold uppercase tracking-wider">
+                {showAllSongs ? "Show less" : "See all"}
+              </button>
+            )}
+            {moreSongsAvailable && (
+              <button onClick={loadMoreSongs} disabled={loadingMoreSongs}
+                className="text-sm bg-card hover:bg-card-hover px-4 py-2 rounded-full font-semibold flex items-center gap-2">
+                {loadingMoreSongs ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+                Load more songs
+              </button>
+            )}
+          </div>
         </section>
       )}
 
       {albums.length > 0 && (
         <section className="px-4 md:px-8 lg:px-12 mb-10">
-          <h2 className="section-title mb-4">Discography</h2>
-          <div className="h-scroll no-scrollbar">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="section-title">Discography</h2>
+            <span className="text-xs text-secondary">
+              {albums.length}{albumTotal > 0 ? ` of ${albumTotal}` : ""}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {albums.map((a) => <AlbumCard key={a.id} album={a} />)}
           </div>
+          {moreAlbumsAvailable && (
+            <button onClick={loadMoreAlbums} disabled={loadingMoreAlbums}
+              className="mt-4 text-sm bg-card hover:bg-card-hover px-4 py-2 rounded-full font-semibold flex items-center gap-2">
+              {loadingMoreAlbums ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+              Load more albums
+            </button>
+          )}
         </section>
       )}
 
