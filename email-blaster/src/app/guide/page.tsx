@@ -6,7 +6,8 @@ import {
   ArrowLeft, Send, Key, Mail, Settings,
   ChevronDown, ChevronUp, Users, FileText,
   History, HelpCircle, CheckCircle2, AlertTriangle,
-  ExternalLink, Copy, Check, Zap, Layers
+  ExternalLink, Copy, Check, Zap, Layers,
+  Smartphone, Share, Plus, Download, Apple, MoreVertical, Monitor
 } from "lucide-react";
 
 function CopyButton({ text }: { text: string }) {

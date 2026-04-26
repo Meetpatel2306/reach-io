@@ -301,7 +301,7 @@ export function FullPlayer() {
               </div>
             </div>
 
-            <div className="hidden lg:flex items-center gap-2 text-white/70 no-drag">
+            <div className="hidden lg:flex items-center gap-2 text-white/70 no-drag" title="Use your device's volume buttons too — they control system media volume">
               <button onClick={player.toggleMute} aria-label="Mute">
                 {player.isMuted || player.volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </button>
@@ -313,6 +313,7 @@ export function FullPlayer() {
                 style={{ ["--val" as string]: `${(player.isMuted ? 0 : player.volume) * 100}%` }}
                 aria-label="Volume"
               />
+              <span className="text-[10px] text-white/40 tabular-nums w-8 text-right">{Math.round((player.isMuted ? 0 : player.volume) * 100)}%</span>
             </div>
           </div>
         </div>

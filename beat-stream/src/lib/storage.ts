@@ -55,7 +55,7 @@ export const defaultEqualizer: EqualizerSettings = {
 };
 
 export const defaultSettings: Settings = {
-  quality: "160kbps",
+  quality: "320kbps",
   downloadQuality: "320kbps",
   theme: "dark",
   accentColor: "green",

@@ -38,11 +38,19 @@ export function pickImage(image: ImageRef[] | string | undefined, prefer: "low" 
 
 export function pickDownloadUrl(song: Song, quality: Quality): string | null {
   if (!song.downloadUrl?.length) return null;
+  // Prefer exact match
   const exact = song.downloadUrl.find((d) => d.quality === quality);
   if (exact) return exact.url;
+  // Highest-to-lowest preference list. Try the requested quality and below first
+  // (so a user choosing 96k doesn't suddenly stream 320k), then go up if nothing
+  // lower exists.
   const order: Quality[] = ["320kbps", "160kbps", "96kbps", "48kbps", "12kbps"];
   const desiredIdx = order.indexOf(quality);
   for (let i = desiredIdx; i < order.length; i++) {
+    const m = song.downloadUrl.find((d) => d.quality === order[i]);
+    if (m) return m.url;
+  }
+  for (let i = desiredIdx - 1; i >= 0; i--) {
     const m = song.downloadUrl.find((d) => d.quality === order[i]);
     if (m) return m.url;
   }

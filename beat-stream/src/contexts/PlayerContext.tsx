@@ -67,6 +67,11 @@ const SILENT_MP3 = "data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudA
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const { settings } = useSettings();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Second audio element for the *next* song. We start downloading it as soon
+  // as the current song begins, so by the time the current track ends the
+  // next one is already buffered → near-zero gap.
+  const preloadRef = useRef<HTMLAudioElement | null>(null);
+  const preloadedSongIdRef = useRef<string | null>(null);
   const silentRef = useRef<HTMLAudioElement | null>(null);
   const eqRef = useRef<Equalizer>(new Equalizer());
   const lastBlobUrlRef = useRef<string | null>(null);
@@ -99,6 +104,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audioRef.current = a;
     a.volume = state.volume;
 
+    const pre = document.createElement("audio");
+    pre.preload = "auto";
+    pre.crossOrigin = "anonymous";
+    pre.setAttribute("playsinline", "true");
+    pre.setAttribute("webkit-playsinline", "true");
+    pre.volume = 0; // Silent — we only want the bytes downloaded
+    preloadRef.current = pre;
+
     const sa = document.createElement("audio");
     sa.src = SILENT_MP3;
     sa.loop = true;
@@ -106,6 +119,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     sa.setAttribute("webkit-playsinline", "true");
     silentRef.current = sa;
 
+    const onVolume = () => {
+      // Mirror the audio element's volume back into state so that:
+      //   • Bluetooth headset volume buttons update our UI slider
+      //   • OS media keys / accessibility tools that adjust audio.volume sync
+      //   • Mute toggled from system controls reflects in our mute icon
+      // (Hardware volume rocker on phones controls OS media volume, which is
+      // applied separately by the OS — that's why the app slider doesn't move
+      // for it, but the actual loudness still changes correctly.)
+      setState((s) => ({ ...s, volume: a.volume, isMuted: a.muted || a.volume === 0 }));
+    };
     const onTime = () => {
       const cur = a.currentTime;
       const dur = a.duration || 0;
@@ -146,6 +169,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.addEventListener("waiting", onWaiting);
     a.addEventListener("playing", onPlaying);
     a.addEventListener("ended", onEnded);
+    a.addEventListener("volumechange", onVolume);
 
     return () => {
       a.removeEventListener("timeupdate", onTime);
@@ -154,6 +178,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       a.removeEventListener("waiting", onWaiting);
       a.removeEventListener("playing", onPlaying);
       a.removeEventListener("ended", onEnded);
+      a.removeEventListener("volumechange", onVolume);
       a.pause(); a.src = "";
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,6 +219,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!sa) return;
     sa.pause();
     try { sa.currentTime = 0; } catch {}
+  }
+
+  // Preload the next song's audio bytes into the hidden second <audio> element
+  // so playback of the next track starts instantly when the current ends.
+  async function warmNext(nextSong: Song | undefined) {
+    const pre = preloadRef.current;
+    if (!pre || !nextSong) return;
+    if (preloadedSongIdRef.current === nextSong.id) return;
+    try {
+      // Get fresh URLs for the next song too (cached, fast on revisit)
+      let full = nextSong;
+      if (!full.downloadUrl?.length) {
+        const data = await cached(`song:${nextSong.id}`, TTL.song, () => api.getSong(nextSong.id));
+        full = (Array.isArray(data) ? data[0] : data) || nextSong;
+      }
+      const url = pickDownloadUrl(full, settings.quality);
+      if (!url) return;
+      pre.src = url;
+      pre.load(); // Triggers the browser to start fetching
+      preloadedSongIdRef.current = nextSong.id;
+    } catch {}
   }
 
   // ALWAYS refetch song details via /api/songs/{id} so we get fresh, non-truncated
@@ -263,7 +309,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // If the next-song preloader already has this URL warmed, the browser's
+    // HTTP cache will serve it instantly — no fresh round-trip needed.
     a.src = src;
+    a.preload = "auto";
     try {
       // Attach EQ on first user-initiated play
       if (!eqRef.current.attached) {
@@ -280,8 +329,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const q = s.queue.slice();
         const idx = q.findIndex((x) => x.id === full.id);
         if (idx >= 0) q[idx] = full;
-        // Prefetch the next 2 songs: full metadata + audio warm + image
         const here = idx >= 0 ? idx : s.queueIndex;
+        // 1) Buffer the very-next track into the hidden audio element (gapless)
+        warmNext(q[here + 1]);
+        // 2) Prefetch metadata + images for the next 2 songs
         for (let i = 1; i <= 2; i++) {
           const nxt = q[here + i];
           if (nxt) {

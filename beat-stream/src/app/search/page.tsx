@@ -12,6 +12,7 @@ import { usePlayer } from "@/contexts/PlayerContext";
 import { decodeHtml, pickImage, artistsName } from "@/lib/utils";
 import { rankSongs } from "@/lib/rank";
 import { cached, TTL } from "@/lib/cache";
+import { smartSearch } from "@/lib/smartSearch";
 import { SongRow } from "@/components/SongRow";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
@@ -63,25 +64,26 @@ function SearchInner() {
     setLoading(true);
     setError(null);
     setPage(0);
-    // Cache full search bundle per query for 1 day. Repeat searches hit zero
-    // network, render in <10ms.
-    const key = `search:${debounced.toLowerCase()}`;
-    cached(key, TTL.search, () => Promise.all([
-      api.searchSongs(debounced, 0, 40).then((r) => r.results).catch(() => null),
-      api.searchAlbums(debounced, 0, 12).then((r) => r.results).catch(() => null),
-      api.searchArtists(debounced, 0, 12).then((r) => r.results).catch(() => null),
-      api.searchPlaylists(debounced, 0, 12).then((r) => r.results).catch(() => null),
-    ])).then(([s, a, ar, p]) => {
-      const allFailed = s == null && a == null && ar == null && p == null;
-      if (allFailed) {
-        setError("Couldn't reach the music API. Check your internet — your network may be blocking it. Try again in a moment or open Settings → About to switch API mirror.");
+    // smartSearch fans out multiple query variants + global topQuery, merges
+    // and ranks. Bundle is cached for 1 day so repeat searches hit zero network.
+    smartSearch(debounced).then((bundle) => {
+      const empty = bundle.songs.length === 0 && bundle.albums.length === 0 && bundle.artists.length === 0 && bundle.playlists.length === 0;
+      if (empty) {
+        // Distinguish API down vs no results — try a 1-shot probe
+        api.searchSongs("a", 0, 1).then(() => {
+          // API up, just no results for this query
+        }).catch(() => {
+          setError("Couldn't reach the music API. Check Settings → About → API Mirror.");
+        });
       }
-      const ranked = rankSongs(s || [], debounced);
-      setSongs(ranked); setAlbums(a || []); setArtists(ar || []); setPlaylists(p || []);
-      setHasMore((s?.length || 0) >= 40);
+      setSongs(bundle.songs);
+      setAlbums(bundle.albums);
+      setArtists(bundle.artists);
+      setPlaylists(bundle.playlists);
+      setHasMore(bundle.songs.length >= 30);
       setLoading(false);
     }).catch(() => {
-      setError("Search failed. Check Settings → About → API Mirror.");
+      setError("Search failed. Try again or switch API mirror in Settings → About.");
       setLoading(false);
     });
   }, [debounced]);
@@ -228,7 +230,29 @@ function SearchInner() {
             <div className="text-center py-16 text-secondary">
               <SearchIcon className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <div className="text-lg font-semibold text-white">No results found for "{query}"</div>
-              <div className="text-sm mt-1">Try a different spelling or different keywords</div>
+              <div className="text-sm mt-2">Try one of these:</div>
+              <div className="flex flex-wrap gap-2 justify-center mt-4 max-w-lg mx-auto">
+                {(() => {
+                  const tokens = query.split(/\s+/).filter((t) => t.length > 1);
+                  const suggestions: string[] = [];
+                  if (tokens.length > 1) {
+                    suggestions.push(tokens[0]);
+                    suggestions.push(tokens[tokens.length - 1]);
+                  }
+                  if (/^the\s/i.test(query)) suggestions.push(query.replace(/^the\s+/i, ""));
+                  suggestions.push(query.replace(/[^\w\s]/g, "").trim());
+                  const seen = new Set<string>();
+                  return Array.from(new Set(suggestions))
+                    .filter((s) => s && s.toLowerCase() !== query.toLowerCase() && !seen.has(s) && (seen.add(s), true))
+                    .slice(0, 5)
+                    .map((s) => (
+                      <button key={s} onClick={() => submit(s)} className="bg-card hover:bg-card-hover rounded-full px-4 py-1.5 text-sm">
+                        Try "{s}"
+                      </button>
+                    ));
+                })()}
+              </div>
+              <div className="text-xs mt-6 text-secondary/70">Tip: search by song name only, then by artist — separate searches give better matches</div>
             </div>
           )}
           {loading && page === 0 ? (

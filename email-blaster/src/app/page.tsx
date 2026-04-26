@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
 import type { EmailResult } from "@/lib/history";
-import { setupAutoUpdateCheck, applyUpdate, checkForUpdate } from "@/lib/updater";
+import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate } from "@/lib/updater";
 
 interface Recipient { name: string; email: string; }
 interface SendResult { email: string; status: string; error?: string; }
@@ -144,6 +144,8 @@ export default function Home() {
   const [updateNotes, setUpdateNotes] = useState<string>("");
   const [updating, setUpdating] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
+  const [autoUpdating, setAutoUpdating] = useState(false);
 
   // Persist state to localStorage whenever key values change
   const persistState = useCallback(async () => {
@@ -234,12 +236,24 @@ export default function Home() {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  // Auto update detection — works on iOS PWA + Android + Desktop
+  // Load auto-update preference
   useEffect(() => {
-    const cleanup = setupAutoUpdateCheck((info) => {
-      setUpdateAvailable(true);
-      setUpdateVersion(info.version);
-      setUpdateNotes(info.notes || "");
+    setAutoUpdateEnabled(getAutoUpdate());
+  }, []);
+
+  // Auto update detection — works on iOS PWA + Android + Desktop
+  // Silently updates when user reopens app (visibility change) — your data is preserved
+  useEffect(() => {
+    const cleanup = setupAutoUpdateCheck({
+      onUpdateAvailable: (info) => {
+        setUpdateAvailable(true);
+        setUpdateVersion(info.version);
+        setUpdateNotes(info.notes || "");
+      },
+      onAutoUpdating: (info) => {
+        setAutoUpdating(true);
+        setUpdateVersion(info.version);
+      },
     });
     return cleanup;
   }, []);
@@ -261,6 +275,12 @@ export default function Home() {
       setTimeout(() => setSmtpMsg(""), 3000);
     }
     setCheckingUpdate(false);
+  };
+
+  const toggleAutoUpdate = () => {
+    const newVal = !autoUpdateEnabled;
+    setAutoUpdateEnabled(newVal);
+    setAutoUpdate(newVal);
   };
 
   const saveSmtpConfig = async () => {
@@ -628,51 +648,86 @@ export default function Home() {
           >
             <HelpCircle size={18} />
           </button>
-          {!isInstalled && installPrompt && (
+          {/* Smart Install/Update button */}
+          {isInstalled && updateAvailable ? (
+            // Installed + update available → show Update button
+            <button
+              onClick={handleUpdate}
+              disabled={updating}
+              className="text-sm flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-semibold shadow-lg shadow-emerald-500/30 disabled:opacity-60"
+            >
+              {updating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {updating ? "Updating" : "Update"}
+            </button>
+          ) : !isInstalled && installPrompt ? (
+            // Not installed (Android/Desktop) → show Install button
             <button onClick={handleInstall} className="btn-primary text-sm flex items-center gap-1.5"><Download size={14} />Install</button>
-          )}
-          {!isInstalled && isIOS && !showIOSInstall && (
+          ) : !isInstalled && isIOS && !showIOSInstall ? (
+            // Not installed (iOS) → show Install button (opens iOS banner)
             <button onClick={() => setShowIOSInstall(true)} className="btn-primary text-sm flex items-center gap-1.5"><Smartphone size={14} />Install</button>
-          )}
+          ) : null}
         </div>
       </div>
 
       {/* Update Available Banner — works on iOS PWA + Android + Desktop */}
-      {updateAvailable && (
+      {updateAvailable && !autoUpdating && (
         <div className="mb-6 relative overflow-hidden rounded-2xl border border-emerald-500/30">
-          {/* Animated gradient background */}
           <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-blue-500/20" />
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent animate-pulse" />
 
-          <div className="relative p-4 flex items-center gap-4 flex-wrap">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
-              <Sparkles size={22} className="text-white" />
-            </div>
-
-            <div className="flex-1 min-w-[200px]">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-white">New Version Available!</h3>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">{updateVersion}</span>
+          <div className="relative p-4">
+            <div className="flex items-center gap-4 flex-wrap mb-2">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30">
+                <Sparkles size={22} className="text-white" />
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {updateNotes || "Tap update to get the latest features and fixes."}
-              </p>
+
+              <div className="flex-1 min-w-[200px]">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-white">New Version Available!</h3>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">{updateVersion}</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {updateNotes || "Tap update to get the latest features and fixes."}
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setUpdateAvailable(false)}
+                  className="px-3 py-2 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/50 text-xs hover:text-slate-200 transition-all"
+                >
+                  Later
+                </button>
+                <button
+                  onClick={handleUpdate}
+                  disabled={updating}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-sm font-semibold shadow-lg shadow-emerald-500/30 hover:from-emerald-600 hover:to-cyan-600 transition-all disabled:opacity-60"
+                >
+                  {updating ? <><Loader2 size={14} className="animate-spin" />Updating...</> : <><RefreshCw size={14} />Update Now</>}
+                </button>
+              </div>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setUpdateAvailable(false)}
-                className="px-3 py-2 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/50 text-xs hover:text-slate-200 transition-all"
-              >
-                Later
-              </button>
-              <button
-                onClick={handleUpdate}
-                disabled={updating}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-sm font-semibold shadow-lg shadow-emerald-500/30 hover:from-emerald-600 hover:to-cyan-600 transition-all disabled:opacity-60"
-              >
-                {updating ? <><Loader2 size={14} className="animate-spin" />Updating...</> : <><RefreshCw size={14} />Update Now</>}
-              </button>
+            <div className="flex items-center gap-1.5 text-[10px] text-emerald-300/80 mt-2 ml-[60px]">
+              <Shield size={10} />
+              <span>Your SMTP credentials, send history, and drafts are preserved.</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Silent auto-updating overlay */}
+      {autoUpdating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(10px)" }}>
+          <div className="glass-card max-w-sm w-full !border-emerald-500/30 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/30">
+              <Loader2 size={32} className="text-white animate-spin" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Updating to {updateVersion}</h2>
+            <p className="text-sm text-slate-400 mb-3">Installing the latest version automatically...</p>
+            <div className="flex items-center justify-center gap-1.5 text-xs text-emerald-400">
+              <Shield size={12} />
+              <span>Your data is safe — nothing will be lost.</span>
             </div>
           </div>
         </div>
@@ -820,23 +875,54 @@ export default function Home() {
           <p className="text-[10px] text-slate-600 mt-3">For Gmail, use an App Password from myaccount.google.com/apppasswords</p>
 
           {/* App Update Section */}
-          <div className="mt-5 pt-4 border-t border-slate-800/60">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Sparkles size={14} className="text-cyan-400" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-300">App Updates</p>
-                  <p className="text-[10px] text-slate-600">Auto-checks every 30s. Tap to check now.</p>
-                </div>
+          <div className="mt-5 pt-4 border-t border-slate-800/60 space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={14} className="text-cyan-400" />
+              <p className="text-xs font-semibold text-slate-300">App Updates</p>
+            </div>
+
+            {/* Auto-update toggle */}
+            <div className="flex items-center justify-between bg-slate-800/30 rounded-lg p-3 border border-slate-700/30">
+              <div>
+                <p className="text-xs text-slate-200 font-medium">Auto-update</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Silently install updates when you reopen the app</p>
               </div>
+              <button
+                onClick={toggleAutoUpdate}
+                className={`relative w-11 h-6 rounded-full border transition-all ${
+                  autoUpdateEnabled
+                    ? "bg-gradient-to-r from-emerald-500 to-cyan-500 border-emerald-400/50"
+                    : "bg-slate-800 border-slate-700"
+                }`}
+                aria-label="Toggle auto-update"
+              >
+                <span
+                  className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all ${
+                    autoUpdateEnabled ? "left-5" : "left-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Manual check button */}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] text-slate-600">Auto-checks every 30s. Tap to check now.</p>
               <button
                 onClick={handleCheckUpdate}
                 disabled={checkingUpdate}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs hover:bg-cyan-500/20 transition-all"
               >
                 {checkingUpdate ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                {checkingUpdate ? "Checking..." : "Check for Updates"}
+                {checkingUpdate ? "Checking..." : "Check Updates"}
               </button>
+            </div>
+
+            {/* Data safety note */}
+            <div className="flex items-start gap-2 bg-emerald-500/5 border border-emerald-500/15 rounded-lg p-2.5">
+              <Shield size={12} className="text-emerald-400 mt-0.5 shrink-0" />
+              <p className="text-[10px] text-emerald-300/80 leading-relaxed">
+                Updates never delete your data. SMTP credentials, history, drafts, and settings are always preserved.
+              </p>
             </div>
           </div>
         </div>
