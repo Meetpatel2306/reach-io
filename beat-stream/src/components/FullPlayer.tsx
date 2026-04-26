@@ -210,7 +210,7 @@ export function FullPlayer() {
                 className="p-2 no-drag"
                 aria-label="Like"
               >
-                <Heart className={`w-7 h-7 ${liked ? "fill-accent text-accent scale-bounce" : "text-white/70 hover:text-white"}`} />
+                <Heart className={`w-7 h-7 ${liked ? "fill-red-500 text-red-500 scale-bounce" : "text-white/70 hover:text-white"}`} />
               </button>
             </div>
 

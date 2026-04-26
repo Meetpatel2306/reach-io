@@ -107,7 +107,7 @@ export function SongMenu({ song, onClose }: { song: Song; onClose: () => void })
           </Link>
         )}
         <button className={item} onClick={() => { const a = toggleLike(song.id); toast(a ? "Added to Liked Songs" : "Removed from Liked Songs", a ? "success" : "info"); onClose(); }}>
-          <Heart className={`w-4 h-4 ${liked ? "fill-accent text-accent" : ""}`} /> {liked ? "Unlike" : "Like"}
+          <Heart className={`w-4 h-4 ${liked ? "fill-red-500 text-red-500" : ""}`} /> {liked ? "Unlike" : "Like"}
         </button>
         <button className={item} onClick={handleDownload}>
           {isDownloaded ? <Trash2 className="w-4 h-4" /> : <Download className="w-4 h-4" />}

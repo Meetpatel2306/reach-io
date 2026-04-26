@@ -86,7 +86,7 @@ export function MiniPlayer() {
             className="p-2 hidden sm:block"
             aria-label="Like"
           >
-            <Heart className={`w-5 h-5 ${liked ? "fill-accent text-accent scale-bounce" : "text-white/70 hover:text-white"}`} />
+            <Heart className={`w-5 h-5 ${liked ? "fill-red-500 text-red-500 scale-bounce" : "text-white/70 hover:text-white"}`} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); togglePlay(); }} className="p-2 text-white" aria-label="Play/Pause">
             {isPlaying ? <Pause className="w-7 h-7 fill-white" /> : <Play className="w-7 h-7 fill-white ml-0.5" />}

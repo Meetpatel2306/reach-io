@@ -3,7 +3,7 @@ import { getUserByEmail, saveUser, setSessionUser, verifyPassword } from "@/lib/
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password, sessionMaxAgeMs } = await req.json();
+    const { email, password } = await req.json();
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
     }
@@ -17,13 +17,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 
-    // Update last login + remember user-chosen session length
     user.lastLoginAt = new Date().toISOString();
-    if (typeof sessionMaxAgeMs === "number" && sessionMaxAgeMs > 0) {
-      user.sessionMaxAgeMs = sessionMaxAgeMs;
-    }
     await saveUser(user);
-    await setSessionUser(user, sessionMaxAgeMs);
+    await setSessionUser(user);
 
     return NextResponse.json({
       success: true,

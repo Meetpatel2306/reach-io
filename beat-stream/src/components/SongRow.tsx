@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Play, Pause, Heart, MoreHorizontal, Check } from "lucide-react";
+import { Play, Pause, Heart, MoreHorizontal, Check, Headphones } from "lucide-react";
 import type { Song } from "@/lib/types";
 import { artistsName, decodeHtml, fmtTime, pickImage } from "@/lib/utils";
 import { usePlayer } from "@/contexts/PlayerContext";
@@ -10,6 +10,16 @@ import { useToast } from "@/contexts/ToastContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { prefetch } from "@/lib/prefetch";
 import { SongMenu } from "./SongMenu";
+
+/** Format big play counts: 12345678 → "12.3M". */
+function fmtPlays(n: number | string | undefined): string {
+  const v = typeof n === "string" ? parseInt(n, 10) : (n || 0);
+  if (!v || !isFinite(v)) return "";
+  if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}B`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return String(v);
+}
 
 export function SongRow({ song, index, queue, showAlbum = true }: { song: Song; index?: number; queue?: Song[]; showAlbum?: boolean }) {
   const { currentSong, isPlaying, togglePlay, playSong, playList } = usePlayer();
@@ -29,11 +39,21 @@ export function SongRow({ song, index, queue, showAlbum = true }: { song: Song; 
   }
 
   const dur = typeof song.duration === "string" ? parseInt(song.duration, 10) : (song.duration || 0);
+  const plays = fmtPlays((song as any).playCount);
+  const year = song.year;
+  const isYouTube = song.source === "youtube";
+  const isItunes = (song.id || "").startsWith("itunes:");
+
+  // Subtitle: artist • year • playCount  (third row reserved for album when shown)
+  const detailBits: string[] = [];
+  if (year) detailBits.push(String(year));
+  if (plays) detailBits.push(`${plays} plays`);
+  if (isItunes) detailBits.push("via iTunes");
+  else if (isYouTube) detailBits.push("via YouTube");
 
   return (
     <div
       onMouseEnter={() => {
-        // Warm audio so click-to-play is instant
         prefetch.songAndAudioStart(song.id, settings.quality);
         if (song.album?.id) prefetch.album(song.album.id);
         if (song.artists?.primary?.[0]?.id) prefetch.artist(song.artists.primary[0].id);
@@ -59,15 +79,29 @@ export function SongRow({ song, index, queue, showAlbum = true }: { song: Song; 
             {song.explicitContent && <span className="ml-2 text-[10px] bg-white/15 text-secondary px-1.5 py-0.5 rounded font-bold">E</span>}
             {isDownloaded && <Check className="inline w-3.5 h-3.5 ml-2 text-accent" />}
           </div>
-          <div className="text-xs text-secondary line-clamp-1 mt-0.5">
-            {song.artists?.primary?.map((a, i) => (
-              <span key={a.id}>
-                <Link href={`/artist/${a.id}`} className="hover:text-white hover:underline" onClick={(e) => e.stopPropagation()}>
-                  {a.name}
-                </Link>
-                {i < (song.artists?.primary?.length || 0) - 1 && ", "}
-              </span>
-            ))}
+          <div className="text-xs text-secondary line-clamp-1 mt-0.5 flex items-center flex-wrap gap-x-1">
+            <span className="line-clamp-1">
+              {song.artists?.primary?.map((a, i) => (
+                <span key={a.id}>
+                  <Link href={`/artist/${a.id}`} className="hover:text-white hover:underline" onClick={(e) => e.stopPropagation()}>
+                    {a.name}
+                  </Link>
+                  {i < (song.artists?.primary?.length || 0) - 1 && ", "}
+                </span>
+              ))}
+            </span>
+            {detailBits.length > 0 && (
+              <>
+                <span className="text-secondary/60">•</span>
+                {detailBits.map((b, i) => (
+                  <span key={i} className="inline-flex items-center gap-1">
+                    {b.endsWith("plays") && <Headphones className="w-3 h-3 inline" />}
+                    {b}
+                    {i < detailBits.length - 1 && <span className="text-secondary/60">•</span>}
+                  </span>
+                ))}
+              </>
+            )}
           </div>
         </div>
       </button>
@@ -84,7 +118,7 @@ export function SongRow({ song, index, queue, showAlbum = true }: { song: Song; 
         className={`p-2 transition ${liked ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         aria-label="Like"
       >
-        <Heart className={`w-4 h-4 ${liked ? "fill-accent text-accent scale-bounce" : "text-secondary hover:text-white"}`} />
+        <Heart className={`w-4 h-4 ${liked ? "fill-red-500 text-red-500 scale-bounce" : "text-secondary hover:text-white"}`} />
       </button>
       <span className="text-xs text-secondary tabular-nums w-12 text-right hidden sm:block">{fmtTime(dur)}</span>
       <div className="relative">

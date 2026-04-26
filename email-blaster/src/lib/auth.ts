@@ -23,11 +23,10 @@ export interface SessionData {
   expiresAt?: number; // unix ms
 }
 
-export const DEFAULT_SESSION_HOURS = 24;
-export const NEVER_EXPIRES = 365 * 24 * 60 * 60 * 1000 * 10; // ~10 years
+// Sessions never expire — 10 years
+export const NEVER_EXPIRES = 365 * 24 * 60 * 60 * 1000 * 10;
 
-// Get session options. If user has a custom maxAge, use it.
-function getSessionOptions(maxAgeMs: number = DEFAULT_SESSION_HOURS * 60 * 60 * 1000): SessionOptions {
+function getSessionOptions(maxAgeMs: number = NEVER_EXPIRES): SessionOptions {
   const password = process.env.SESSION_SECRET || "dev-only-secret-min-32-chars-long-please-change!";
   return {
     password,
@@ -47,14 +46,13 @@ export async function getSession(): Promise<SessionData> {
   return session;
 }
 
-export async function setSessionUser(user: User, maxAgeMs?: number): Promise<void> {
+export async function setSessionUser(user: User): Promise<void> {
   const cookieStore = await cookies();
-  const ageMs = maxAgeMs ?? user.sessionMaxAgeMs ?? DEFAULT_SESSION_HOURS * 60 * 60 * 1000;
-  const session = await getIronSession<SessionData>(cookieStore, getSessionOptions(ageMs));
+  const session = await getIronSession<SessionData>(cookieStore, getSessionOptions(NEVER_EXPIRES));
   session.email = user.email;
   session.name = user.name;
   session.role = user.role;
-  session.expiresAt = Date.now() + ageMs;
+  session.expiresAt = Date.now() + NEVER_EXPIRES;
   await session.save();
 }
 
