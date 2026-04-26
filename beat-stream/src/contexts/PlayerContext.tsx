@@ -202,12 +202,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     store.write(STORAGE_KEYS.queue, { songs: state.queue, currentIndex: state.queueIndex, source: state.queueSource });
   }, [state.currentSong, state.queue, state.queueIndex, state.queueSource]);
 
-  // Apply EQ when settings change
+  // Apply EQ + enhancements when settings change
   useEffect(() => {
     if (!eqRef.current.attached) return;
     eqRef.current.setGains(settings.equalizer.gains, settings.equalizer.enabled);
     eqRef.current.setNormalize(settings.normalize);
-  }, [settings.equalizer.gains, settings.equalizer.enabled, settings.normalize]);
+    eqRef.current.setEnhancement(settings.enhancement);
+  }, [settings.equalizer.gains, settings.equalizer.enabled, settings.normalize, settings.enhancement]);
 
   function startSilent() {
     const sa = silentRef.current;
@@ -314,9 +315,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.src = src;
     a.preload = "auto";
     try {
-      // Attach EQ on first user-initiated play
+      // Attach EQ + enhancement chain on first user-initiated play
       if (!eqRef.current.attached) {
-        eqRef.current.attach(a, settings.equalizer.gains, settings.equalizer.enabled, settings.normalize);
+        eqRef.current.attach(a, settings.equalizer.gains, settings.equalizer.enabled, settings.normalize, settings.enhancement);
       }
       eqRef.current.resume();
       stopSilent();

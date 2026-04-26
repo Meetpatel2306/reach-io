@@ -1,4 +1,4 @@
-import type { Song, UserPlaylist, Settings, DownloadEntry, PlayHistoryEntry, EqualizerSettings } from "./types";
+import type { Song, UserPlaylist, Settings, DownloadEntry, PlayHistoryEntry, EqualizerSettings, EnhancementSettings } from "./types";
 
 const K = {
   liked: "bs-liked-songs",
@@ -54,6 +54,14 @@ export const defaultEqualizer: EqualizerSettings = {
   gains: [0, 0, 0, 0, 0],
 };
 
+export const defaultEnhancement: EnhancementSettings = {
+  bassEnhancer: 0,
+  stereoWidener: 50,
+  compressor: 0,
+  loudness: 0,
+  limiter: true,
+};
+
 export const defaultSettings: Settings = {
   quality: "320kbps",
   downloadQuality: "320kbps",
@@ -70,6 +78,7 @@ export const defaultSettings: Settings = {
   vinylRotation: false,
   animations: true,
   equalizer: defaultEqualizer,
+  enhancement: defaultEnhancement,
 };
 
 export const liked = {

@@ -10,6 +10,22 @@ import {
   Smartphone, Share, Plus, Download, Apple, MoreVertical, Monitor
 } from "lucide-react";
 
+function BookIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+    </svg>
+  );
+}
+
+function Sparkle() {
+  return (
+    <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/30 mb-4">
+      <Send size={26} className="text-white" />
+    </div>
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -41,49 +57,86 @@ export default function GuidePage() {
   const [activePlatform, setActivePlatform] = useState("ios");
 
   return (
-    <div className="min-h-screen p-4 md:p-8 max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-8">
-        <Link href="/" className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all">
-          <ArrowLeft size={18} />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-white">Setup Guide</h1>
-          <p className="text-slate-500 text-xs">How to get your App Password and start sending</p>
+    <div className="min-h-screen max-w-4xl mx-auto">
+      {/* Hero Header */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 via-indigo-500/10 to-cyan-500/20" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-violet-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative p-4 md:p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <Link href="/" className="p-2 rounded-lg border border-slate-700/50 bg-slate-900/60 backdrop-blur text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all">
+              <ArrowLeft size={18} />
+            </Link>
+            <span className="text-xs text-slate-500 uppercase tracking-widest">Setup Guide</span>
+          </div>
+
+          <div className="text-center pb-2">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/30 mb-4">
+              <BookIcon />
+            </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">Get Started in Minutes</h1>
+            <p className="text-sm md:text-base text-slate-400 max-w-xl mx-auto">Everything you need to install Email Blaster Pro, get your App Password, and send your first email.</p>
+          </div>
         </div>
       </div>
 
-      {/* Quick Overview */}
-      <div className="glass-card mb-6">
+      <div className="p-4 md:p-8 pt-2">
+
+      {/* Sticky Table of Contents (in-page nav) */}
+      <nav className="sticky top-0 z-30 -mx-4 md:-mx-8 px-4 md:px-8 py-3 mb-6 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/50 overflow-x-auto">
+        <div className="flex items-center gap-2 min-w-max">
+          {[
+            { href: "#install", label: "Install", icon: Smartphone },
+            { href: "#provider", label: "Email Setup", icon: Key },
+            { href: "#how-to", label: "How to Use", icon: Layers },
+            { href: "#tips", label: "Pro Tips", icon: Zap },
+            { href: "#faq", label: "FAQ", icon: HelpCircle },
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <a key={item.href} href={item.href} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-400 border border-slate-700/30 text-xs hover:text-violet-300 hover:border-violet-500/30 transition-all whitespace-nowrap">
+                <Icon size={12} />{item.label}
+              </a>
+            );
+          })}
+        </div>
+      </nav>
+
+      {/* Quick Overview — improved with gradients */}
+      <section className="mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Zap size={20} className="text-amber-400" />
-          <h2 className="text-lg font-semibold text-white">Quick Overview</h2>
+          <h2 className="text-lg font-bold text-white">3 Steps to Send Your First Email</h2>
         </div>
-        <p className="text-sm text-slate-400 mb-4">Email Blaster Pro sends emails using your own email account via SMTP. You need an <strong className="text-violet-300">App Password</strong> (not your regular password) to connect securely.</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { step: "1", title: "Get App Password", desc: "Generate from your email provider", icon: Key, color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/5" },
-            { step: "2", title: "Configure Settings", desc: "Enter credentials in the app", icon: Settings, color: "text-violet-400", border: "border-violet-500/20", bg: "bg-violet-500/5" },
-            { step: "3", title: "Start Sending", desc: "Compose, add recipients, send", icon: Send, color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/5" },
+            { step: "1", title: "Get App Password", desc: "Generate from your provider", icon: Key, gradient: "from-amber-500 to-orange-500", glow: "shadow-amber-500/20" },
+            { step: "2", title: "Configure Settings", desc: "Enter credentials in app", icon: Settings, gradient: "from-violet-500 to-indigo-500", glow: "shadow-violet-500/20" },
+            { step: "3", title: "Start Sending", desc: "Compose & send emails", icon: Send, gradient: "from-emerald-500 to-cyan-500", glow: "shadow-emerald-500/20" },
           ].map((s) => {
             const Icon = s.icon;
             return (
-              <div key={s.step} className={`${s.bg} rounded-xl p-4 border ${s.border}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-6 h-6 rounded-full bg-violet-500/20 text-violet-300 text-xs font-bold flex items-center justify-center">{s.step}</span>
-                  <Icon size={16} className={s.color} />
+              <div key={s.step} className="group relative">
+                <div className="relative bg-slate-900/60 backdrop-blur rounded-2xl p-5 border border-slate-700/50 hover:border-slate-600/70 transition-all">
+                  <div className={`absolute -top-3 -left-3 w-12 h-12 rounded-2xl bg-gradient-to-br ${s.gradient} flex items-center justify-center shadow-lg ${s.glow} transition-transform group-hover:scale-110`}>
+                    <Icon size={22} className="text-white" />
+                  </div>
+                  <div className="absolute top-3 right-3 text-3xl font-black text-slate-700/50 group-hover:text-slate-600/50 transition-colors">{s.step}</div>
+                  <div className="mt-7">
+                    <p className="text-sm font-bold text-white">{s.title}</p>
+                    <p className="text-xs text-slate-500 mt-1">{s.desc}</p>
+                  </div>
                 </div>
-                <p className="text-sm font-semibold text-white">{s.title}</p>
-                <p className="text-xs text-slate-500 mt-1">{s.desc}</p>
               </div>
             );
           })}
         </div>
-      </div>
+      </section>
 
       {/* Install App Guide */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+      <section id="install" className="mb-8 scroll-mt-20">
+        <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
           <Smartphone size={20} className="text-violet-400" />
           Install Email Blaster Pro
         </h2>
@@ -313,11 +366,11 @@ export default function GuidePage() {
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Email Provider Cards */}
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+      <section id="provider" className="mb-8 scroll-mt-20">
+        <h2 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
           <Key size={20} className="text-violet-400" />
           Choose Your Email Provider
         </h2>
@@ -549,86 +602,97 @@ export default function GuidePage() {
             </div>
           </div>
         )}
-      </div>
+      </section>
 
       {/* How to Use */}
-      <div className="glass-card mb-6">
-        <div className="flex items-center gap-2 mb-5">
+      <section id="how-to" className="mb-8 scroll-mt-20">
+        <div className="flex items-center gap-2 mb-4">
           <Layers size={20} className="text-violet-400" />
-          <h2 className="text-lg font-semibold text-white">How to Use Email Blaster Pro</h2>
+          <h2 className="text-lg font-bold text-white">How to Use Email Blaster Pro</h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {[
-            { icon: Settings, color: "text-amber-400", gradient: "from-amber-500 to-orange-500", title: "Configure SMTP", desc: "Gear icon → Enter email + App Password → Test → Save" },
-            { icon: FileText, color: "text-violet-400", gradient: "from-violet-500 to-indigo-500", title: "Upload Resume", desc: "Drag & drop PDF/DOC. Auto-attaches to every email." },
-            { icon: Mail, color: "text-blue-400", gradient: "from-blue-500 to-cyan-500", title: "Compose Email", desc: "Write subject + body. Live Preview shows the result." },
-            { icon: Users, color: "text-emerald-400", gradient: "from-emerald-500 to-teal-500", title: "Add Recipients", desc: "Manual entry, Name <email> format, or CSV upload." },
-            { icon: Send, color: "text-red-400", gradient: "from-red-500 to-pink-500", title: "Review & Send", desc: "Set delay (3-10s), hit Send, watch Activity log." },
-            { icon: History, color: "text-cyan-400", gradient: "from-cyan-500 to-blue-500", title: "Check History", desc: "Clock icon → Batches or By Email → Search & filter." },
+            { icon: Settings, gradient: "from-amber-500 to-orange-500", glow: "shadow-amber-500/20", title: "Configure SMTP", desc: "Gear icon → Enter email + App Password → Test → Save" },
+            { icon: FileText, gradient: "from-violet-500 to-indigo-500", glow: "shadow-violet-500/20", title: "Upload Resume", desc: "Drag & drop PDF/DOC. Auto-attaches to every email." },
+            { icon: Mail, gradient: "from-blue-500 to-cyan-500", glow: "shadow-blue-500/20", title: "Compose Email", desc: "Write subject + body. Live Preview shows the result." },
+            { icon: Users, gradient: "from-emerald-500 to-teal-500", glow: "shadow-emerald-500/20", title: "Add Recipients", desc: "Manual entry, Name <email> format, or CSV upload." },
+            { icon: Send, gradient: "from-red-500 to-pink-500", glow: "shadow-red-500/20", title: "Review & Send", desc: "Set delay (3-10s), hit Send, watch Activity log." },
+            { icon: History, gradient: "from-cyan-500 to-blue-500", glow: "shadow-cyan-500/20", title: "Check History", desc: "Clock icon → Batches or By Email → Search & filter." },
           ].map((item, i) => {
             const Icon = item.icon;
             return (
-              <div key={i} className="bg-slate-800/30 rounded-xl p-4 border border-slate-700/20 flex items-start gap-3">
-                <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${item.gradient} flex items-center justify-center shrink-0`}>
-                  <Icon size={18} className="text-white" />
+              <div key={i} className="group bg-slate-900/60 backdrop-blur rounded-xl p-4 border border-slate-700/40 hover:border-slate-600/60 transition-all flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${item.gradient} flex items-center justify-center shrink-0 shadow-lg ${item.glow} group-hover:scale-105 transition-transform`}>
+                  <Icon size={20} className="text-white" />
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-white">{item.title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{item.desc}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-white">{item.title}</p>
+                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{item.desc}</p>
                 </div>
               </div>
             );
           })}
         </div>
-      </div>
+      </section>
 
       {/* Pro Tips */}
-      <div className="glass-card mb-6">
+      <section id="tips" className="mb-8 scroll-mt-20">
         <div className="flex items-center gap-2 mb-4">
           <Zap size={20} className="text-amber-400" />
-          <h2 className="text-lg font-semibold text-white">Pro Tips</h2>
+          <h2 className="text-lg font-bold text-white">Pro Tips</h2>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {[
-            { tip: "Use 3-10s delays", desc: "Avoids spam filters", color: "text-emerald-300", border: "border-emerald-500/15", bg: "bg-emerald-500/5" },
-            { tip: "Batches under 50", desc: "Split large lists", color: "text-blue-300", border: "border-blue-500/15", bg: "bg-blue-500/5" },
-            { tip: "Test yourself first", desc: "Send to your own email", color: "text-amber-300", border: "border-amber-500/15", bg: "bg-amber-500/5" },
-            { tip: "Check History", desc: "Verify delivery status", color: "text-violet-300", border: "border-violet-500/15", bg: "bg-violet-500/5" },
-            { tip: "CSV for bulk", desc: "name,email format", color: "text-cyan-300", border: "border-cyan-500/15", bg: "bg-cyan-500/5" },
-            { tip: "Install as PWA", desc: "Desktop app experience", color: "text-pink-300", border: "border-pink-500/15", bg: "bg-pink-500/5" },
+            { tip: "3-10s delays", desc: "Avoids spam filters", icon: "⏱️", color: "from-emerald-500/20 to-emerald-500/5", border: "border-emerald-500/30", text: "text-emerald-300" },
+            { tip: "Under 50/batch", desc: "Split large lists", icon: "📦", color: "from-blue-500/20 to-blue-500/5", border: "border-blue-500/30", text: "text-blue-300" },
+            { tip: "Test yourself", desc: "Send to your own email", icon: "🧪", color: "from-amber-500/20 to-amber-500/5", border: "border-amber-500/30", text: "text-amber-300" },
+            { tip: "Check History", desc: "Verify delivery status", icon: "📊", color: "from-violet-500/20 to-violet-500/5", border: "border-violet-500/30", text: "text-violet-300" },
+            { tip: "CSV for bulk", desc: "name,email format", icon: "📄", color: "from-cyan-500/20 to-cyan-500/5", border: "border-cyan-500/30", text: "text-cyan-300" },
+            { tip: "Install as PWA", desc: "Native app feel", icon: "📱", color: "from-pink-500/20 to-pink-500/5", border: "border-pink-500/30", text: "text-pink-300" },
           ].map((t, i) => (
-            <div key={i} className={`${t.bg} rounded-xl p-3 border ${t.border}`}>
-              <p className={`text-xs font-semibold ${t.color}`}>{t.tip}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{t.desc}</p>
+            <div key={i} className={`bg-gradient-to-br ${t.color} backdrop-blur rounded-xl p-3 border ${t.border} hover:scale-[1.02] transition-transform`}>
+              <div className="text-2xl mb-1">{t.icon}</div>
+              <p className={`text-xs font-bold ${t.text}`}>{t.tip}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{t.desc}</p>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
       {/* FAQ */}
-      <div className="glass-card mb-6">
+      <section id="faq" className="mb-8 scroll-mt-20">
         <div className="flex items-center gap-2 mb-4">
           <HelpCircle size={20} className="text-violet-400" />
-          <h2 className="text-lg font-semibold text-white">FAQ</h2>
+          <h2 className="text-lg font-bold text-white">FAQ</h2>
         </div>
         <div className="space-y-2">
           {faqs.map((faq, i) => (
-            <div key={i} className="border border-slate-700/30 rounded-xl overflow-hidden">
-              <button onClick={() => setExpandedFaq(expandedFaq === i ? null : i)} className="w-full flex items-center justify-between p-3 text-left hover:bg-white/[0.02] transition-colors">
-                <span className="text-sm text-slate-200 pr-4">{faq.q}</span>
-                {expandedFaq === i ? <ChevronUp size={14} className="text-slate-500 shrink-0" /> : <ChevronDown size={14} className="text-slate-500 shrink-0" />}
+            <div key={i} className={`bg-slate-900/40 backdrop-blur border rounded-xl overflow-hidden transition-all ${expandedFaq === i ? "border-violet-500/30" : "border-slate-700/30"}`}>
+              <button onClick={() => setExpandedFaq(expandedFaq === i ? null : i)} className="w-full flex items-center justify-between p-3.5 text-left hover:bg-white/[0.02] transition-colors">
+                <span className="text-sm text-slate-200 pr-4 font-medium">{faq.q}</span>
+                {expandedFaq === i ? <ChevronUp size={14} className="text-violet-400 shrink-0" /> : <ChevronDown size={14} className="text-slate-500 shrink-0" />}
               </button>
-              {expandedFaq === i && <div className="px-3 pb-3"><p className="text-xs text-slate-400 leading-relaxed">{faq.a}</p></div>}
+              {expandedFaq === i && <div className="px-3.5 pb-3.5 -mt-1"><p className="text-xs text-slate-400 leading-relaxed">{faq.a}</p></div>}
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Final CTA */}
+      <div className="relative mt-8 mb-4 overflow-hidden rounded-2xl border border-violet-500/30">
+        <div className="absolute inset-0 bg-gradient-to-r from-violet-500/20 via-indigo-500/20 to-cyan-500/20" />
+        <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 to-transparent animate-pulse" />
+        <div className="relative p-8 text-center">
+          <Sparkle />
+          <h3 className="text-xl font-bold text-white mb-2">Ready to Send?</h3>
+          <p className="text-sm text-slate-400 mb-5 max-w-sm mx-auto">Configure your SMTP settings and start sending bulk emails with resume attachments.</p>
+          <Link href="/" className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 text-white text-sm font-bold shadow-lg shadow-violet-500/30 hover:from-violet-600 hover:to-indigo-600 transition-all">
+            <Send size={18} />Start Sending Emails
+          </Link>
+        </div>
       </div>
 
-      <div className="text-center py-8">
-        <Link href="/" className="btn-primary inline-flex items-center gap-2 text-lg px-8 py-3">
-          <Send size={20} />Start Sending Emails
-        </Link>
       </div>
     </div>
   );

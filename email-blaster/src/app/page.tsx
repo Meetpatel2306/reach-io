@@ -11,7 +11,7 @@ import {
 import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
 import type { EmailResult } from "@/lib/history";
-import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate } from "@/lib/updater";
+import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate, BUNDLED_VERSION } from "@/lib/updater";
 
 interface Recipient { name: string; email: string; }
 interface SendResult { email: string; status: string; error?: string; }
@@ -260,7 +260,7 @@ export default function Home() {
 
   const handleUpdate = async () => {
     setUpdating(true);
-    await applyUpdate(updateVersion);
+    await applyUpdate();
   };
 
   const handleCheckUpdate = async () => {
@@ -876,9 +876,14 @@ export default function Home() {
 
           {/* App Update Section */}
           <div className="mt-5 pt-4 border-t border-slate-800/60 space-y-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles size={14} className="text-cyan-400" />
-              <p className="text-xs font-semibold text-slate-300">App Updates</p>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-cyan-400" />
+                <p className="text-xs font-semibold text-slate-300">App Updates</p>
+              </div>
+              <span className="text-[10px] font-mono bg-slate-800 text-cyan-300 px-2 py-0.5 rounded-full border border-slate-700/50">
+                Running: {BUNDLED_VERSION}
+              </span>
             </div>
 
             {/* Auto-update toggle */}
@@ -904,18 +909,24 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Manual check button */}
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[10px] text-slate-600">Auto-checks every 30s. Tap to check now.</p>
+            {/* Manual check + force update buttons */}
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleCheckUpdate}
                 disabled={checkingUpdate}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs hover:bg-cyan-500/20 transition-all"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs hover:bg-cyan-500/20 transition-all"
               >
                 {checkingUpdate ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                 {checkingUpdate ? "Checking..." : "Check Updates"}
               </button>
+              <button
+                onClick={async () => { if (confirm("Force update? This will clear cache and reload. Your data is preserved.")) await applyUpdate(); }}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs hover:bg-amber-500/20 transition-all"
+              >
+                <Zap size={12} />Force Update
+              </button>
             </div>
+            <p className="text-[10px] text-slate-600">Auto-checks every 30s. Use Force Update if updates aren&apos;t arriving.</p>
 
             {/* Data safety note */}
             <div className="flex items-start gap-2 bg-emerald-500/5 border border-emerald-500/15 rounded-lg p-2.5">

@@ -174,6 +174,53 @@ export default function SettingsPage() {
         <Row label="Autoplay similar songs" hint="When the queue ends"><Toggle value={settings.autoplay} onChange={(v) => update({ autoplay: v })} /></Row>
       </Section>
 
+      <Section title="Sound Enhancement">
+        <p className="text-xs text-secondary -mt-1 mb-2">
+          JioSaavn streams cap at 320 kbps. These DSP filters run on top to make
+          the stream punchier and more dynamic.
+        </p>
+        <Row label="Bass Enhancer" hint={`+${settings.enhancement.bassEnhancer} dB at 80 Hz`}>
+          <input type="range" min={0} max={10} value={settings.enhancement.bassEnhancer}
+            onChange={(e) => update({ enhancement: { ...settings.enhancement, bassEnhancer: parseInt(e.target.value, 10) } })}
+            className="range range-accent w-32"
+            style={{ ["--val" as string]: `${(settings.enhancement.bassEnhancer / 10) * 100}%` }} />
+        </Row>
+        <Row label="Stereo Widener" hint={`${settings.enhancement.stereoWidener}%${settings.enhancement.stereoWidener > 50 ? " (wider)" : settings.enhancement.stereoWidener < 50 ? " (narrower)" : " (neutral)"}`}>
+          <input type="range" min={0} max={100} value={settings.enhancement.stereoWidener}
+            onChange={(e) => update({ enhancement: { ...settings.enhancement, stereoWidener: parseInt(e.target.value, 10) } })}
+            className="range range-accent w-32"
+            style={{ ["--val" as string]: `${settings.enhancement.stereoWidener}%` }} />
+        </Row>
+        <Row label="Dynamic Compression" hint={settings.enhancement.compressor === 0 ? "Off" : `${settings.enhancement.compressor}/10 — louder quiet parts`}>
+          <input type="range" min={0} max={10} value={settings.enhancement.compressor}
+            onChange={(e) => update({ enhancement: { ...settings.enhancement, compressor: parseInt(e.target.value, 10) } })}
+            className="range range-accent w-32"
+            style={{ ["--val" as string]: `${(settings.enhancement.compressor / 10) * 100}%` }} />
+        </Row>
+        <Row label="Loudness Boost" hint={`+${settings.enhancement.loudness} dB`}>
+          <input type="range" min={0} max={12} value={settings.enhancement.loudness}
+            onChange={(e) => update({ enhancement: { ...settings.enhancement, loudness: parseInt(e.target.value, 10) } })}
+            className="range range-accent w-32"
+            style={{ ["--val" as string]: `${(settings.enhancement.loudness / 12) * 100}%` }} />
+        </Row>
+        <Row label="Brick-wall Limiter" hint="Prevents clipping when boosted">
+          <Toggle value={settings.enhancement.limiter} onChange={(v) => update({ enhancement: { ...settings.enhancement, limiter: v } })} />
+        </Row>
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-white/5">
+          <span className="text-xs text-secondary self-center mr-2">Quick presets:</span>
+          <button onClick={() => update({ enhancement: { bassEnhancer: 0, stereoWidener: 50, compressor: 0, loudness: 0, limiter: true } })}
+            className="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full">Off</button>
+          <button onClick={() => update({ enhancement: { bassEnhancer: 4, stereoWidener: 65, compressor: 3, loudness: 3, limiter: true } })}
+            className="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full">Headphones</button>
+          <button onClick={() => update({ enhancement: { bassEnhancer: 6, stereoWidener: 75, compressor: 5, loudness: 5, limiter: true } })}
+            className="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full">Phone Speaker</button>
+          <button onClick={() => update({ enhancement: { bassEnhancer: 3, stereoWidener: 80, compressor: 2, loudness: 2, limiter: true } })}
+            className="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full">Studio</button>
+          <button onClick={() => update({ enhancement: { bassEnhancer: 7, stereoWidener: 60, compressor: 6, loudness: 7, limiter: true } })}
+            className="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 rounded-full">Bass Head</button>
+        </div>
+      </Section>
+
       <Section title="Equalizer">
         <Row label="Enable Equalizer"><Toggle value={settings.equalizer.enabled} onChange={(v) => update({ equalizer: { ...settings.equalizer, enabled: v } })} /></Row>
         <Row label="Preset">

@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import type { Settings } from "@/lib/types";
-import { defaultSettings, defaultEqualizer, store, STORAGE_KEYS } from "@/lib/storage";
+import { defaultSettings, defaultEqualizer, defaultEnhancement, store, STORAGE_KEYS } from "@/lib/storage";
 
 interface Ctx {
   settings: Settings;
@@ -15,7 +15,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = store.read<Settings>(STORAGE_KEYS.settings, defaultSettings);
-    setSettings({ ...defaultSettings, ...stored, equalizer: { ...defaultEqualizer, ...(stored.equalizer || {}) } });
+    setSettings({
+      ...defaultSettings,
+      ...stored,
+      equalizer: { ...defaultEqualizer, ...(stored.equalizer || {}) },
+      enhancement: { ...defaultEnhancement, ...(stored.enhancement || {}) },
+    });
   }, []);
 
   useEffect(() => {

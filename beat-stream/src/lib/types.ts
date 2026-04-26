@@ -105,6 +105,14 @@ export interface EqualizerSettings {
   gains: number[]; // 5 bands: 60, 230, 910, 3600, 14000 Hz
 }
 
+export interface EnhancementSettings {
+  bassEnhancer: number;      // 0-10
+  stereoWidener: number;     // 0-100  (50 = neutral)
+  compressor: number;        // 0-10
+  loudness: number;          // 0-12 dB
+  limiter: boolean;
+}
+
 export interface Settings {
   quality: Quality;
   downloadQuality: Quality;
@@ -121,4 +129,5 @@ export interface Settings {
   vinylRotation: boolean;
   animations: boolean;
   equalizer: EqualizerSettings;
+  enhancement: EnhancementSettings;
 }

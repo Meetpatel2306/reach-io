@@ -99,23 +99,31 @@ export function peek<T>(key: string): T | null {
 import { useEffect, useState } from "react";
 
 /**
- * React hook: returns the cached value immediately (or null), kicks off a
- * background fetch, and re-renders when fresh data lands.
+ * React hook: returns the cached value immediately on the *client* (or null),
+ * kicks off a background fetch, and re-renders when fresh data lands.
  *
- * - First visit ever: returns null, then renders when fetcher resolves
- * - Repeat visits: returns cached value INSTANTLY (no spinner), and silently
- *   updates the UI if a refresh produced different data
+ * Hydration: we deliberately start with `null/isLoading=true` on the first
+ * render so the SSR output matches client hydration. On the very next tick
+ * (in useEffect) we read localStorage. The result is a single-frame spinner
+ * flash on revisits, but no hydration mismatch.
+ *
+ * - First visit ever: spinner → renders when fetcher resolves
+ * - Repeat visits: spinner for ~1 frame → cached data appears instantly
  */
 export function useCached<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): { data: T | null; isLoading: boolean; error: unknown } {
-  const [data, setData] = useState<T | null>(() => peek<T>(key));
-  const [isLoading, setLoading] = useState<boolean>(() => peek<T>(key) === null);
+  const [data, setData] = useState<T | null>(null);
+  const [isLoading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     let cancelled = false;
     const initial = peek<T>(key);
-    if (initial !== null) setData(initial);
-    setLoading(initial === null);
+    if (initial !== null) {
+      setData(initial);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     const unsub = subscribe<T>(key, (fresh) => { if (!cancelled) setData(fresh); });
 

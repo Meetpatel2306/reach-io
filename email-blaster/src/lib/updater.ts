@@ -1,9 +1,13 @@
-// Client-side update detection — works on iOS PWA + Android + Desktop
-// IMPORTANT: localStorage data is NEVER touched. SMTP creds, history, drafts all preserved.
+// Update detection — works on iOS PWA + Android + Desktop
+// localStorage data is NEVER touched. SMTP creds, history, drafts all preserved.
 
-const VERSION_KEY = "email-blaster-version";
 const AUTO_UPDATE_KEY = "email-blaster-auto-update";
-const VERSION_CHECK_INTERVAL = 30000; // 30 seconds
+const VERSION_CHECK_INTERVAL = 30000;
+
+// Bundled version — baked into the JS at build time from public/version.json.
+// This is the SOURCE OF TRUTH for "what version am I running".
+export const BUNDLED_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "dev";
+export const BUNDLED_BUILD_TIME = process.env.NEXT_PUBLIC_APP_BUILD_TIME || "";
 
 interface VersionInfo {
   version: string;
@@ -13,9 +17,10 @@ interface VersionInfo {
 
 export async function fetchLatestVersion(): Promise<VersionInfo | null> {
   try {
-    const res = await fetch(`/version.json?t=${Date.now()}`, {
+    // Aggressive cache busting — query param + no-store headers
+    const res = await fetch(`/version.json?t=${Date.now()}&r=${Math.random()}`, {
       cache: "no-store",
-      headers: { "Cache-Control": "no-cache" },
+      headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" },
     });
     if (!res.ok) return null;
     return await res.json();
@@ -24,18 +29,9 @@ export async function fetchLatestVersion(): Promise<VersionInfo | null> {
   }
 }
 
-export function getStoredVersion(): string | null {
-  try { return localStorage.getItem(VERSION_KEY); } catch { return null; }
-}
-
-export function setStoredVersion(version: string) {
-  try { localStorage.setItem(VERSION_KEY, version); } catch {}
-}
-
 export function getAutoUpdate(): boolean {
   try {
     const v = localStorage.getItem(AUTO_UPDATE_KEY);
-    // Default: ON (auto-update enabled by default)
     return v !== "0";
   } catch { return true; }
 }
@@ -44,54 +40,48 @@ export function setAutoUpdate(enabled: boolean) {
   try { localStorage.setItem(AUTO_UPDATE_KEY, enabled ? "1" : "0"); } catch {}
 }
 
-export async function checkForUpdate(): Promise<{ hasUpdate: boolean; latest?: VersionInfo }> {
+export async function checkForUpdate(): Promise<{ hasUpdate: boolean; latest?: VersionInfo; current: string }> {
   const latest = await fetchLatestVersion();
-  if (!latest) return { hasUpdate: false };
+  if (!latest) return { hasUpdate: false, current: BUNDLED_VERSION };
 
-  const stored = getStoredVersion();
-  if (!stored) {
-    setStoredVersion(latest.version);
-    return { hasUpdate: false, latest };
-  }
-
-  return { hasUpdate: stored !== latest.version, latest };
+  // Compare BUNDLED version (what's actually running) with LATEST (what server has)
+  // This is reliable — bundled version is baked into the JS at build time
+  return {
+    hasUpdate: BUNDLED_VERSION !== latest.version,
+    latest,
+    current: BUNDLED_VERSION,
+  };
 }
 
-// Apply the update — clears CACHES ONLY (localStorage preserved)
-export async function applyUpdate(latestVersion?: string) {
+// Aggressive update: unregister SW + clear all caches + force reload
+export async function applyUpdate() {
   try {
+    // 1. Unregister all service workers
     if ("serviceWorker" in navigator) {
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (reg?.waiting) {
-        reg.waiting.postMessage({ type: "SKIP_WAITING" });
-      }
-      await reg?.update();
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
     }
 
-    // Clear ONLY service-worker caches — localStorage stays intact
-    // Your SMTP credentials, send history, drafts, and settings are preserved.
+    // 2. Clear ALL caches (localStorage stays intact)
     if ("caches" in window) {
       const keys = await caches.keys();
       await Promise.all(keys.map((k) => caches.delete(k)));
     }
-
-    if (latestVersion) setStoredVersion(latestVersion);
   } catch {}
 
-  window.location.reload();
+  // 3. Force reload bypassing cache (cache-busting query param ensures fresh fetch)
+  const url = new URL(window.location.href);
+  url.searchParams.set("_v", String(Date.now()));
+  window.location.replace(url.toString());
 }
 
 interface AutoUpdateOptions {
   onUpdateAvailable: (info: VersionInfo) => void;
-  onAutoUpdating?: (info: VersionInfo) => void; // Called right before silent auto-update
+  onAutoUpdating?: (info: VersionInfo) => void;
 }
 
-// Setup automatic update polling.
-// If auto-update is enabled and the app is in background/just-opened,
-// silently apply the update without user interaction.
 export function setupAutoUpdateCheck(opts: AutoUpdateOptions) {
   let lastCheck = 0;
-  let pendingUpdate: VersionInfo | null = null;
 
   const doCheck = async (canAutoApply: boolean = false) => {
     if (Date.now() - lastCheck < 5000) return;
@@ -99,43 +89,32 @@ export function setupAutoUpdateCheck(opts: AutoUpdateOptions) {
     const { hasUpdate, latest } = await checkForUpdate();
     if (!hasUpdate || !latest) return;
 
-    pendingUpdate = latest;
-
-    // If auto-update is enabled AND we can safely apply (page just got focus / hidden),
-    // do silent auto-update
     if (canAutoApply && getAutoUpdate()) {
       opts.onAutoUpdating?.(latest);
-      await applyUpdate(latest.version);
+      await applyUpdate();
       return;
     }
 
-    // Otherwise show the manual update banner
     opts.onUpdateAvailable(latest);
   };
 
-  // Initial check (no auto-apply on first load — let user see the banner if they want)
+  // Initial check on load
   doCheck(false);
 
-  // Periodic check (no auto-apply during active use)
+  // Periodic checks
   const interval = setInterval(() => doCheck(false), VERSION_CHECK_INTERVAL);
 
-  // When tab becomes visible again — auto-apply if enabled
-  // (User reopened the PWA, perfect time to silently update)
+  // On visibility/focus — auto-apply if enabled
   const onVisible = () => {
     if (document.visibilityState === "visible") {
-      // Small delay to let page settle
       setTimeout(() => doCheck(true), 500);
     }
   };
   document.addEventListener("visibilitychange", onVisible);
 
-  // Window focus — also good time for auto-update
-  const onFocus = () => {
-    setTimeout(() => doCheck(true), 500);
-  };
+  const onFocus = () => setTimeout(() => doCheck(true), 500);
   window.addEventListener("focus", onFocus);
 
-  // Online — refresh check (no auto-apply, user might be in middle of something)
   const onOnline = () => doCheck(false);
   window.addEventListener("online", onOnline);
 
@@ -145,8 +124,4 @@ export function setupAutoUpdateCheck(opts: AutoUpdateOptions) {
     window.removeEventListener("focus", onFocus);
     window.removeEventListener("online", onOnline);
   };
-}
-
-export function getPendingUpdateVersion(): string | null {
-  return getStoredVersion();
 }
