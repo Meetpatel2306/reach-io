@@ -20,6 +20,18 @@ const K = {
   blockedSongs: "bs-blocked-songs",
   blockedArtists: "bs-blocked-artists",
   totalListenSeconds: "bs-total-listen-seconds",
+  volume: "bs-volume",
+  muted: "bs-muted",
+  ratings: "bs-ratings",
+  tags: "bs-tags",
+  hidden: "bs-hidden-songs",
+  smartPlaylists: "bs-smart-playlists",
+  skipStats: "bs-skip-stats",
+  localFiles: "bs-local-files",
+  achievements: "bs-achievements",
+  dailyGoalMinutes: "bs-daily-goal-minutes",
+  eqProfiles: "bs-eq-profiles",
+  playlistFolders: "bs-playlist-folders",
 } as const;
 
 export const STORAGE_KEYS = K;
@@ -249,4 +261,197 @@ export const downloads = {
   remove: (id: string) => write(K.downloads, downloads.list().filter((d) => d.songId !== id)),
   clear: () => write(K.downloads, []),
   totalBytes: () => downloads.list().reduce((s, d) => s + (d.size || 0), 0),
+};
+
+// ─── Ratings (1-5 stars per song) ─────────────────────────────────────
+export const ratings = {
+  all: () => read<Record<string, number>>(K.ratings, {}),
+  get: (id: string) => ratings.all()[id] || 0,
+  set: (id: string, n: number) => {
+    const m = ratings.all();
+    if (n <= 0) delete m[id]; else m[id] = Math.min(5, Math.max(1, n));
+    write(K.ratings, m);
+  },
+};
+
+// ─── Tags (string[] per song) ─────────────────────────────────────────
+export const tags = {
+  all: () => read<Record<string, string[]>>(K.tags, {}),
+  get: (id: string) => tags.all()[id] || [],
+  set: (id: string, arr: string[]) => {
+    const m = tags.all();
+    if (!arr.length) delete m[id]; else m[id] = arr;
+    write(K.tags, m);
+  },
+  add: (id: string, t: string) => {
+    const cur = tags.get(id);
+    if (!cur.includes(t)) tags.set(id, [...cur, t]);
+  },
+  remove: (id: string, t: string) => tags.set(id, tags.get(id).filter((x) => x !== t)),
+  // Universe of all tags ever used (for autocomplete)
+  vocabulary: (): string[] => {
+    const all = tags.all();
+    const set = new Set<string>();
+    Object.values(all).forEach((arr) => arr.forEach((t) => set.add(t)));
+    return Array.from(set).sort();
+  },
+};
+
+// ─── Hidden songs (softer than blocked: still playable if explicit) ───
+export const hidden = makeIdSet(K.hidden);
+
+// ─── Skip stats (for auto-skip prediction) ────────────────────────────
+export interface SkipStat { plays: number; skips: number; }
+export const skipStats = {
+  all: () => read<Record<string, SkipStat>>(K.skipStats, {}),
+  get: (id: string): SkipStat => skipStats.all()[id] || { plays: 0, skips: 0 },
+  recordPlay: (id: string, completedRatio: number) => {
+    const m = skipStats.all();
+    const cur = m[id] || { plays: 0, skips: 0 };
+    cur.plays += 1;
+    if (completedRatio < 0.4) cur.skips += 1; // listened to <40% → counts as skip
+    m[id] = cur;
+    write(K.skipStats, m);
+  },
+  shouldAutoSkip: (id: string): boolean => {
+    const s = skipStats.get(id);
+    return s.plays >= 3 && s.skips / s.plays >= 0.7;
+  },
+  clear: () => write(K.skipStats, {}),
+};
+
+// ─── Smart Playlists ──────────────────────────────────────────────────
+export interface SmartPlaylistRule {
+  field: "language" | "artist" | "year" | "plays" | "liked" | "duration" | "rating" | "tag";
+  op: "is" | "isNot" | "contains" | "gt" | "lt" | "gte" | "lte";
+  value: string | number | boolean;
+}
+export interface SmartPlaylist {
+  id: string;
+  name: string;
+  description?: string;
+  rules: SmartPlaylistRule[];
+  combine: "and" | "or";
+  createdAt: number;
+}
+export const smartPlaylists = {
+  list: () => read<SmartPlaylist[]>(K.smartPlaylists, []),
+  create: (name: string, rules: SmartPlaylistRule[], combine: "and" | "or" = "and"): SmartPlaylist => {
+    const all = smartPlaylists.list();
+    const sp: SmartPlaylist = {
+      id: `sp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name, rules, combine, createdAt: Date.now(),
+    };
+    all.unshift(sp);
+    write(K.smartPlaylists, all);
+    return sp;
+  },
+  update: (id: string, patch: Partial<SmartPlaylist>) => {
+    const all = smartPlaylists.list();
+    const idx = all.findIndex((p) => p.id === id);
+    if (idx < 0) return;
+    all[idx] = { ...all[idx], ...patch };
+    write(K.smartPlaylists, all);
+  },
+  remove: (id: string) => write(K.smartPlaylists, smartPlaylists.list().filter((p) => p.id !== id)),
+  get: (id: string) => smartPlaylists.list().find((p) => p.id === id),
+};
+
+// ─── Local files (metadata; blob lives in IndexedDB audio cache) ──────
+export interface LocalFile {
+  id: string;            // synthetic: "local_<random>"
+  name: string;
+  artist: string;
+  duration: number;
+  size: number;
+  mimeType: string;
+  importedAt: number;
+}
+export const localFiles = {
+  list: () => read<LocalFile[]>(K.localFiles, []),
+  add: (f: LocalFile) => {
+    const all = localFiles.list();
+    all.unshift(f);
+    write(K.localFiles, all);
+  },
+  remove: (id: string) => write(K.localFiles, localFiles.list().filter((f) => f.id !== id)),
+  clear: () => write(K.localFiles, []),
+};
+
+// ─── Achievements ─────────────────────────────────────────────────────
+export const achievements = {
+  unlocked: () => read<string[]>(K.achievements, []),
+  has: (id: string) => achievements.unlocked().includes(id),
+  unlock: (id: string): boolean => {
+    if (achievements.has(id)) return false;
+    write(K.achievements, [...achievements.unlocked(), id]);
+    return true;
+  },
+};
+
+// ─── Daily goal ───────────────────────────────────────────────────────
+export const dailyGoal = {
+  get: () => read<number>(K.dailyGoalMinutes, 30),
+  set: (m: number) => write(K.dailyGoalMinutes, m),
+};
+
+// ─── EQ profile slots ─────────────────────────────────────────────────
+export interface EqProfile { id: string; name: string; eq: EqualizerSettings; }
+export const eqProfiles = {
+  list: () => read<EqProfile[]>(K.eqProfiles, []),
+  save: (name: string, eq: EqualizerSettings) => {
+    const all = eqProfiles.list();
+    all.unshift({ id: `eqp_${Date.now()}`, name, eq });
+    write(K.eqProfiles, all);
+  },
+  remove: (id: string) => write(K.eqProfiles, eqProfiles.list().filter((p) => p.id !== id)),
+};
+
+// ─── Playlist folders ─────────────────────────────────────────────────
+export interface PlaylistFolder { id: string; name: string; playlistIds: string[]; }
+export const playlistFolders = {
+  list: () => read<PlaylistFolder[]>(K.playlistFolders, []),
+  create: (name: string): PlaylistFolder => {
+    const f: PlaylistFolder = { id: `fld_${Date.now()}`, name, playlistIds: [] };
+    write(K.playlistFolders, [f, ...playlistFolders.list()]);
+    return f;
+  },
+  remove: (id: string) => write(K.playlistFolders, playlistFolders.list().filter((f) => f.id !== id)),
+  addPlaylist: (folderId: string, playlistId: string) => {
+    const all = playlistFolders.list();
+    const idx = all.findIndex((f) => f.id === folderId);
+    if (idx < 0) return;
+    if (!all[idx].playlistIds.includes(playlistId)) all[idx].playlistIds.push(playlistId);
+    write(K.playlistFolders, all);
+  },
+  removePlaylist: (folderId: string, playlistId: string) => {
+    const all = playlistFolders.list();
+    const idx = all.findIndex((f) => f.id === folderId);
+    if (idx < 0) return;
+    all[idx].playlistIds = all[idx].playlistIds.filter((p) => p !== playlistId);
+    write(K.playlistFolders, all);
+  },
+};
+
+// ─── Backup / restore ─────────────────────────────────────────────────
+export const backup = {
+  export: (): string => {
+    const data: Record<string, unknown> = {};
+    Object.values(K).forEach((k) => {
+      if (typeof window === "undefined") return;
+      const v = localStorage.getItem(k);
+      if (v != null) data[k] = JSON.parse(v);
+    });
+    return JSON.stringify({ version: 1, exportedAt: Date.now(), data }, null, 2);
+  },
+  import: (json: string): boolean => {
+    try {
+      const obj = JSON.parse(json);
+      if (!obj?.data) return false;
+      Object.entries(obj.data).forEach(([k, v]) => {
+        if (Object.values(K).includes(k as any)) write(k, v);
+      });
+      return true;
+    } catch { return false; }
+  },
 };

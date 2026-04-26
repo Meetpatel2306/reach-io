@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Search as SearchIcon, X, Mic, Loader2, Play } from "lucide-react";
+import { Search as SearchIcon, X, Mic, Loader2, Play, Quote } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Album, Artist, Playlist, Song } from "@/lib/types";
 import { searches } from "@/lib/storage";
@@ -13,12 +13,15 @@ import { decodeHtml, pickImage, artistsName } from "@/lib/utils";
 import { rankSongs } from "@/lib/rank";
 import { cached, TTL } from "@/lib/cache";
 import { smartSearch } from "@/lib/smartSearch";
+import { searchByLyric } from "@/lib/lyricSearch";
 import { SongRow } from "@/components/SongRow";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
 import { PlaylistCard } from "@/components/PlaylistCard";
 
-type Tab = "all" | "songs" | "albums" | "artists" | "playlists";
+type Tab = "all" | "songs" | "albums" | "artists" | "playlists" | "lyrics";
+
+interface LyricMatch { trackName: string; artistName: string; albumName?: string; snippet?: string; }
 
 const TRENDING = ["Arijit Singh", "Diljit Dosanjh", "Drake", "Taylor Swift", "Pritam", "AP Dhillon", "The Weeknd", "Karan Aujla", "Anirudh", "Atif Aslam", "Shreya Ghoshal", "Badshah"];
 
@@ -45,6 +48,7 @@ function SearchInner() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [lyricMatches, setLyricMatches] = useState<LyricMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -86,6 +90,9 @@ function SearchInner() {
       setError("Search failed. Try again or switch API mirror in Settings → About.");
       setLoading(false);
     });
+    // Lyric search runs in parallel — surfaces matches in the "Lyrics" tab
+    cached(`lyric-search:${debounced.toLowerCase()}`, TTL.search, () => searchByLyric(debounced, 12))
+      .then(setLyricMatches).catch(() => setLyricMatches([]));
   }, [debounced]);
 
   function submit(q: string) {
@@ -130,6 +137,7 @@ function SearchInner() {
     { key: "albums", label: "Albums" },
     { key: "artists", label: "Artists" },
     { key: "playlists", label: "Playlists" },
+    { key: "lyrics", label: "Lyrics" },
   ];
 
   // Top result: prefer top artist if exact-ish match, else first song

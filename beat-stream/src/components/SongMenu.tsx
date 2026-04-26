@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Play, ListPlus, Plus, User, Disc3, Download, Share2, Trash2, Heart, Ban, Radio } from "lucide-react";
+import { Play, ListPlus, Plus, User, Disc3, Download, Share2, Trash2, Heart, Ban, Radio, EyeOff, Star, Tag, QrCode } from "lucide-react";
 import type { Song } from "@/lib/types";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useLibrary } from "@/contexts/LibraryContext";
@@ -9,9 +9,13 @@ import { useToast } from "@/contexts/ToastContext";
 import { useSettings } from "@/contexts/SettingsContext";
 import { artistsName, pickDownloadUrl } from "@/lib/utils";
 import { downloadAudio, audioCache } from "@/lib/audioCache";
-import { downloads } from "@/lib/storage";
+import { downloads, hidden, ratings } from "@/lib/storage";
 import { api } from "@/lib/api";
 import { PlaylistPickerModal } from "./PlaylistPickerModal";
+import { StarRating } from "./StarRating";
+import { TagEditor } from "./TagEditor";
+import { QRModal } from "./QRModal";
+import { buildRelatedQueue } from "@/lib/related";
 
 export function SongMenu({ song, onClose }: { song: Song; onClose: () => void }) {
   const player = usePlayer();
@@ -20,9 +24,13 @@ export function SongMenu({ song, onClose }: { song: Song; onClose: () => void })
   const { toast } = useToast();
   const ref = useRef<HTMLDivElement>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [rating, setRating] = useState(() => (typeof window !== "undefined" ? ratings.get(song.id) : 0));
+  const [hideTagged, setHideTagged] = useState(false);
   const isDownloaded = downloadIds.includes(song.id);
   const liked = isLiked(song.id);
   const blocked = isBlockedSong(song.id);
+  const isHidden = typeof window !== "undefined" && hidden.list().includes(song.id);
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -62,11 +70,9 @@ export function SongMenu({ song, onClose }: { song: Song; onClose: () => void })
     onClose();
     toast("Building song radio...", "info");
     try {
-      const artistName = song.artists?.primary?.[0]?.name || song.name;
-      const res = await api.searchSongs(artistName, 0, 30);
-      const filtered = res.results.filter((s) => s.id !== song.id);
-      if (!filtered.length) { toast("No similar songs found", "error"); return; }
-      player.playList([song, ...filtered], 0, `${song.name} Radio`);
+      const related = await buildRelatedQueue(song, 30);
+      if (!related.length) { toast("No similar songs found", "error"); return; }
+      player.playList([song, ...related], 0, `${song.name} Radio`);
     } catch { toast("Couldn't start radio", "error"); }
   }
 
@@ -113,11 +119,34 @@ export function SongMenu({ song, onClose }: { song: Song; onClose: () => void })
         <button className={item} onClick={handleShare}>
           <Share2 className="w-4 h-4" /> Share
         </button>
+        <button className={item} onClick={() => { setShowQR(true); }}>
+          <QrCode className="w-4 h-4" /> QR Code
+        </button>
+        <div className="border-t border-white/10 my-1" />
+        <div className="px-3 py-2 flex items-center justify-between text-sm">
+          <span className="flex items-center gap-2"><Star className="w-4 h-4" /> Rating</span>
+          <StarRating value={rating} onChange={(n) => { ratings.set(song.id, n); setRating(n); }} />
+        </div>
+        <div className="px-3 py-2">
+          <div className="flex items-center gap-2 text-sm mb-1.5"><Tag className="w-4 h-4" /> Tags</div>
+          <TagEditor songId={song.id} />
+        </div>
+        <div className="border-t border-white/10 my-1" />
+        <button className={item} onClick={() => { hidden.toggle(song.id); toast(isHidden ? "Unhidden" : "Hidden from mixes", "info"); setHideTagged(!isHidden); onClose(); }}>
+          <EyeOff className="w-4 h-4" /> {isHidden ? "Unhide" : "Hide from mixes"}
+        </button>
         <button className={item} onClick={() => { const a = toggleBlockSong(song.id); toast(a ? "Blocked — won't play" : "Unblocked", a ? "info" : "success"); onClose(); }}>
           <Ban className="w-4 h-4" /> {blocked ? "Unblock" : "Don't Play This"}
         </button>
       </div>
       {showPicker && <PlaylistPickerModal song={song} onClose={() => { setShowPicker(false); onClose(); }} />}
+      {showQR && (
+        <QRModal
+          url={song.url || (typeof window !== "undefined" ? `${window.location.origin}/?play=${song.id}` : "")}
+          title={`${song.name} — ${artistsName(song)}`}
+          onClose={() => { setShowQR(false); onClose(); }}
+        />
+      )}
     </>
   );
 }

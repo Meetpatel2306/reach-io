@@ -14,6 +14,8 @@ export interface ArtistRef {
 
 export interface AlbumRef { id: string; name: string; url?: string; }
 
+export type SongSource = "saavn" | "youtube";
+
 export interface Song {
   id: string;
   name: string;
@@ -31,6 +33,10 @@ export interface Song {
   artists?: { primary?: ArtistRef[]; featured?: ArtistRef[]; all?: ArtistRef[] };
   image?: ImageRef[];
   downloadUrl?: DownloadUrl[];
+  // Origin of the metadata. Defaults to "saavn" when absent.
+  source?: SongSource;
+  // YouTube/Piped: video id used to (re-)resolve stream URLs as they expire.
+  ytId?: string;
 }
 
 export interface Album {

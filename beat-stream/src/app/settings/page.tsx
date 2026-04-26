@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Trash2, Smartphone, Keyboard, Download, Music } from "lucide-react";
+import { Trash2, Smartphone, Keyboard, Download, Music, Save, Upload as UploadIcon, Target, Eye } from "lucide-react";
 import { useSettings } from "@/contexts/SettingsContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useLibrary } from "@/contexts/LibraryContext";
-import { history, searches, store, STORAGE_KEYS, downloads, songCache, recent, counts, listenTime } from "@/lib/storage";
+import { history, searches, store, STORAGE_KEYS, downloads, songCache, recent, counts, listenTime, backup, dailyGoal, hidden, skipStats } from "@/lib/storage";
 import { audioCache } from "@/lib/audioCache";
 import { cacheBytes, clearAllCache } from "@/lib/cache";
 import type { AccentColor, Quality, Theme } from "@/lib/types";
@@ -25,6 +25,36 @@ export default function SettingsPage() {
   const [installed, setInstalled] = useState(false);
   const [apiHost, setApiHostState] = useState<string>(API_HOSTS[0]);
   const [stats, setStats] = useState({ totalPlays: 0, totalSec: 0, topArtist: "—", topSong: "—", topLang: "—" });
+  const [goalMin, setGoalMin] = useState(30);
+  const [hiddenList, setHiddenList] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setGoalMin(dailyGoal.get());
+    setHiddenList(hidden.list());
+  }, []);
+
+  function handleBackup() {
+    const json = backup.export();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `beatstream-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("Backup downloaded", "success");
+  }
+
+  function handleRestore(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const ok = backup.import(String(reader.result));
+      if (ok) { toast("Restored — reloading", "success"); setTimeout(() => window.location.reload(), 800); }
+      else toast("Invalid backup file", "error");
+    };
+    reader.readAsText(file);
+  }
 
   useEffect(() => {
     audioCache.size().then(setAudioSize);
@@ -310,10 +340,47 @@ export default function SettingsPage() {
         <Row label="Play History">
           <button onClick={() => { history.clear(); recent.clear(); counts.clear(); listenTime.clear(); toast("Play history cleared", "success"); }} className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded">Clear</button>
         </Row>
+        <Row label="Backup library" hint="Save all settings, playlists, ratings, history to a JSON file">
+          <div className="flex gap-2">
+            <button onClick={handleBackup} className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded flex items-center gap-1"><Save className="w-3.5 h-3.5" /> Export</button>
+            <label className="text-sm bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded flex items-center gap-1 cursor-pointer">
+              <UploadIcon className="w-3.5 h-3.5" /> Import
+              <input type="file" accept=".json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRestore(f); e.currentTarget.value = ""; }} />
+            </label>
+          </div>
+        </Row>
         <Row label="Reset all data" hint="Erases everything — settings, library, history, downloads">
           <button onClick={clearAllData} className="text-sm bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1.5 rounded">Factory reset</button>
         </Row>
       </Section>
+
+      <Section title="Daily Goal">
+        <Row label="Listening goal" hint="Target minutes per day shown on your home screen">
+          <div className="flex items-center gap-3">
+            <input type="range" min={5} max={240} step={5} value={goalMin}
+              onChange={(e) => { const v = parseInt(e.target.value, 10); setGoalMin(v); dailyGoal.set(v); }}
+              className="range range-accent w-32" style={{ ["--val" as string]: `${(goalMin / 240) * 100}%` }} />
+            <span className="text-sm tabular-nums w-16 text-right">{goalMin} min</span>
+          </div>
+        </Row>
+      </Section>
+
+      {hiddenList.length > 0 && (
+        <Section title="Hidden Songs">
+          <div className="text-xs text-secondary -mt-1 mb-2">Songs hidden from auto-mixes. They'll still play if you tap them directly.</div>
+          {hiddenList.map((id) => {
+            const s = songCache.get(id);
+            return (
+              <div key={id} className="flex items-center justify-between text-sm py-1">
+                <span className="line-clamp-1 flex items-center gap-2"><Eye className="w-4 h-4 text-secondary" /> {s?.name || id}</span>
+                <button onClick={() => { hidden.toggle(id); setHiddenList(hidden.list()); toast("Unhidden", "info"); }} className="text-xs text-accent hover:underline">Unhide</button>
+              </div>
+            );
+          })}
+          <button onClick={() => { hidden.clear(); setHiddenList([]); toast("Cleared", "success"); }} className="text-xs text-secondary hover:text-white mt-2">Clear all</button>
+          <button onClick={() => { skipStats.clear(); toast("Auto-skip predictions reset", "success"); }} className="text-xs text-secondary hover:text-white mt-2 ml-3">Reset auto-skip predictions</button>
+        </Section>
+      )}
 
       {(blockedSongList.length > 0 || blockedArtistIds.length > 0) && (
         <Section title="Blocked Content">

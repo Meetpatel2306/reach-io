@@ -1,4 +1,5 @@
 import type { Album, Artist, Playlist, Song } from "./types";
+import { getLrcLibLyrics, getLrcLibPlainText } from "./lrclib";
 
 // Multiple mirrors of the same JioSaavn API. We try them in order and
 // remember which one is currently working so subsequent calls are fast.
@@ -106,6 +107,53 @@ export const api = {
       );
       return data.lyrics || null;
     } catch { return null; }
+  },
+  /**
+   * Lyrics for a full Song object. Tries JioSaavn first (only meaningful for
+   * `source: "saavn"` songs since YouTube ids aren't in Saavn's index), then
+   * falls through to LRCLIB which has a much wider catalog of synced lyrics.
+   */
+  getLyricsForSong: async (song: Song): Promise<string | null> => {
+    if (song.source !== "youtube") {
+      try {
+        const data = await get<{ lyrics: string; snippet?: string; copyright?: string }>(
+          `/api/songs/${song.id}/lyrics`
+        );
+        if (data.lyrics) return data.lyrics;
+      } catch {}
+    }
+    const artist = song.artists?.primary?.[0]?.name;
+    if (!artist || !song.name) return null;
+    const dur = typeof song.duration === "string" ? parseInt(song.duration, 10) : song.duration;
+    return getLrcLibPlainText(artist, song.name, song.album?.name, dur || undefined);
+  },
+  /**
+   * Like getLyricsForSong but also returns synced LRC if available so the
+   * UI can highlight the current line and auto-scroll. Saavn's lyrics
+   * endpoint returns HTML/plain only, so for synced lyrics we always go to
+   * LRCLIB. We still try Saavn first to get a plain fallback, then enrich
+   * with LRCLIB when present.
+   */
+  getSyncedLyricsForSong: async (song: Song): Promise<{ plain: string | null; synced: string | null }> => {
+    let plain: string | null = null;
+    if (song.source !== "youtube") {
+      try {
+        const data = await get<{ lyrics: string }>(`/api/songs/${song.id}/lyrics`);
+        if (data.lyrics) plain = data.lyrics;
+      } catch {}
+    }
+    const artist = song.artists?.primary?.[0]?.name;
+    if (artist && song.name) {
+      const dur = typeof song.duration === "string" ? parseInt(song.duration, 10) : song.duration;
+      const lrc = await getLrcLibLyrics(artist, song.name, song.album?.name, dur || undefined);
+      if (lrc) {
+        return {
+          plain: plain || lrc.plain,
+          synced: lrc.synced,
+        };
+      }
+    }
+    return { plain, synced: null };
   },
   // Some saavn.dev mirrors expose a `/suggestions` endpoint for songs. We try
   // it and treat any failure as "not available" — the recommender falls back

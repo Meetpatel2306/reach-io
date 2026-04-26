@@ -409,9 +409,24 @@ export default function GuidePage() {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-white">Gmail Setup</h3>
-                <p className="text-xs text-slate-500">Get your 16-character App Password</p>
+                <p className="text-xs text-slate-500">Two ways: Sign in with Google (1 click) or App Password</p>
               </div>
             </div>
+
+            {/* Recommended: Sign in with Google */}
+            <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl p-4 mb-5">
+              <div className="flex items-start gap-3 mb-2">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shrink-0">
+                  <Check size={16} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">Recommended: Sign in with Google</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Open Settings (gear icon) → click <strong className="text-white">&quot;Sign in with Google&quot;</strong>. Done in one click. No App Password needed.</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-3">Or use App Password (manual)</p>
 
             {/* Prerequisite */}
             <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 mb-5 flex items-start gap-3">

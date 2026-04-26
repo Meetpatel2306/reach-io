@@ -12,6 +12,7 @@ import Link from "next/link";
 import { saveToHistory } from "@/lib/history";
 import type { EmailResult } from "@/lib/history";
 import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate, BUNDLED_VERSION } from "@/lib/updater";
+import { loadOAuth, clearOAuth, consumeOAuthFragment, startOAuth, getValidAccessToken, type OAuthSession } from "@/lib/oauth";
 
 interface Recipient { name: string; email: string; }
 interface SendResult { email: string; status: string; error?: string; }
@@ -147,6 +148,9 @@ export default function Home() {
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
   const [autoUpdating, setAutoUpdating] = useState(false);
 
+  // Google OAuth session
+  const [oauthSession, setOauthSession] = useState<OAuthSession | null>(null);
+
   // Persist state to localStorage whenever key values change
   const persistState = useCallback(async () => {
     if (restoring) return;
@@ -213,6 +217,29 @@ export default function Home() {
     }
     // No env var fallback — user must configure via UI settings
   }, []);
+
+  // Google OAuth: consume callback fragment + load saved session
+  useEffect(() => {
+    const fromFragment = consumeOAuthFragment();
+    if (fromFragment) {
+      setOauthSession(fromFragment);
+      setSmtpMsg(`Signed in as ${fromFragment.email}`);
+      setSmtpConfigured(true);
+    } else {
+      const saved = loadOAuth();
+      if (saved) {
+        setOauthSession(saved);
+        setSmtpConfigured(true);
+      }
+    }
+  }, []);
+
+  const handleSignOut = () => {
+    clearOAuth();
+    setOauthSession(null);
+    if (!smtpUser || !smtpPass) setSmtpConfigured(false);
+    setSmtpMsg("Signed out from Google");
+  };
 
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e as BeforeInstallPromptEvent); };
@@ -525,9 +552,16 @@ export default function Home() {
     if (resumeFilename) fd.append("resumeFilename", resumeFilename);
     if (resumeFile) fd.append("resumeFile", resumeFile);
 
-    // Send SMTP creds from localStorage
+    // Prefer OAuth (Gmail API) when available — falls back to SMTP otherwise
+    const oauth = loadOAuth();
     const smtp = loadSmtp();
-    if (smtp && smtp.smtpUser && smtp.smtpPass) {
+    if (oauth) {
+      const accessToken = await getValidAccessToken();
+      if (accessToken) {
+        fd.append("oauthAccessToken", accessToken);
+        fd.append("oauthEmail", oauth.email);
+      }
+    } else if (smtp && smtp.smtpUser && smtp.smtpPass) {
       fd.append("smtpHost", smtp.smtpHost);
       fd.append("smtpPort", smtp.smtpPort);
       fd.append("smtpUser", smtp.smtpUser);
@@ -554,7 +588,7 @@ export default function Home() {
           timestamp: new Date().toISOString(),
           subject,
           body,
-          from: smtp?.smtpUser || smtpUser || "",
+          from: oauth?.email || smtp?.smtpUser || smtpUser || "",
           hasAttachment: !!(resumeFile && resumeSaved),
           attachmentName: resumeFile?.name || "",
           totalRecipients: recipients.length,
@@ -802,7 +836,7 @@ export default function Home() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Settings size={20} className="text-violet-400" />
-              <h2 className="text-lg font-semibold text-white">SMTP Settings</h2>
+              <h2 className="text-lg font-semibold text-white">Email Settings</h2>
               {smtpConfigured && (
                 <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Connected</span>
               )}
@@ -810,7 +844,56 @@ export default function Home() {
             <button onClick={() => setShowSettings(false)} className="text-slate-500 hover:text-slate-300"><X size={18} /></button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Google OAuth — primary, recommended path */}
+          {oauthSession ? (
+            <div className="mb-5 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
+                    <Check size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Signed in with Google</p>
+                    <p className="text-xs text-emerald-300">{oauthSession.email}</p>
+                  </div>
+                </div>
+                <button onClick={handleSignOut} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-xs hover:bg-red-500/20 transition-all">
+                  <Trash2 size={12} />Sign Out
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3">Emails will be sent via Gmail API (no SMTP password needed).</p>
+            </div>
+          ) : (
+            <div className="mb-5 bg-gradient-to-br from-violet-500/10 to-indigo-500/10 border border-violet-500/20 rounded-xl p-4">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0">
+                  <svg width="22" height="22" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-white">Recommended: Sign in with Google</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">One-click setup. No App Password needed. Gmail-only.</p>
+                </div>
+              </div>
+              <button
+                onClick={startOAuth}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-white text-slate-900 text-sm font-semibold hover:bg-slate-100 transition-all shadow-sm"
+              >
+                <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                Sign in with Google
+              </button>
+            </div>
+          )}
+
+          {/* Divider with "or" */}
+          {!oauthSession && (
+            <div className="flex items-center gap-3 my-4">
+              <div className="flex-1 h-px bg-slate-700/40" />
+              <span className="text-[10px] text-slate-600 uppercase tracking-widest">or use SMTP</span>
+              <div className="flex-1 h-px bg-slate-700/40" />
+            </div>
+          )}
+
+          {!oauthSession && <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Email Address</label>
               <input className="input-field" type="email" placeholder="you@gmail.com" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} />
@@ -842,12 +925,14 @@ export default function Home() {
                 </select>
               </div>
             </div>
-          </div>
+          </div>}
 
           {smtpMsg && (
-            <p className={`text-sm mt-3 ${smtpMsg.includes("successful") || smtpMsg.includes("Verified") || smtpMsg.includes("Saved") ? "text-emerald-400" : smtpMsg.includes("removed") ? "text-amber-400" : "text-red-400"}`}>{smtpMsg}</p>
+            <p className={`text-sm mt-3 ${smtpMsg.includes("successful") || smtpMsg.includes("Signed in") || smtpMsg.includes("Verified") || smtpMsg.includes("Saved") ? "text-emerald-400" : smtpMsg.includes("removed") || smtpMsg.includes("Signed out") ? "text-amber-400" : "text-red-400"}`}>{smtpMsg}</p>
           )}
 
+          {!oauthSession && (
+          <>
           <div className="flex gap-3 mt-4 flex-wrap">
             <button
               onClick={testSmtpConnection}
@@ -865,7 +950,7 @@ export default function Home() {
               {savingSmtp ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
               {savingSmtp ? "Saving..." : "Save Config"}
             </button>
-            {smtpConfigured && (
+            {smtpConfigured && smtpUser && (
               <button onClick={deleteSmtpConfig} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-sm hover:bg-red-500/20 transition-all">
                 <Trash2 size={14} />Remove
               </button>
@@ -873,6 +958,8 @@ export default function Home() {
           </div>
 
           <p className="text-[10px] text-slate-600 mt-3">For Gmail, use an App Password from myaccount.google.com/apppasswords</p>
+          </>
+          )}
 
           {/* App Update Section */}
           <div className="mt-5 pt-4 border-t border-slate-800/60 space-y-3">
@@ -1401,8 +1488,11 @@ export default function Home() {
             </div>
 
             {tourStep < tourSteps.length - 1 && (
-              <button onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }} className="text-[10px] text-slate-600 hover:text-slate-400 mt-2 block mx-auto transition-colors">
-                Skip tour
+              <button
+                onClick={() => { setShowTour(false); localStorage.setItem("email-blaster-tour-seen", "1"); }}
+                className="mt-3 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-slate-900 text-slate-300 border border-slate-700 text-sm font-semibold hover:bg-slate-800 hover:text-white transition-all"
+              >
+                <X size={14} />Skip Tour
               </button>
             )}
           </div>

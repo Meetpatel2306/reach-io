@@ -12,6 +12,7 @@ import { api } from "./api";
 import type { Song, Album, Artist, Playlist } from "./types";
 import { rankSongs } from "./rank";
 import { cached, TTL } from "./cache";
+import { ytSearchSongs } from "./youtubeMusic";
 
 export interface SearchBundle {
   songs: Song[];
@@ -55,6 +56,9 @@ async function safeSearchPlaylists(q: string): Promise<Playlist[]> {
 async function safeGlobal(q: string) {
   try { return await api.searchAll(q); } catch { return null; }
 }
+async function safeYt(q: string): Promise<Song[]> {
+  try { return await ytSearchSongs(q, 20); } catch { return []; }
+}
 
 export async function smartSearch(query: string): Promise<SearchBundle> {
   return cached(`smart-search:${query.toLowerCase()}`, TTL.search, () => doSmartSearch(query));
@@ -63,27 +67,48 @@ export async function smartSearch(query: string): Promise<SearchBundle> {
 async function doSmartSearch(query: string): Promise<SearchBundle> {
   const vs = variants(query);
 
-  // Run all variants in parallel — but bound it to 3 to keep it polite
+  // Run all variants in parallel — but bound it to 3 to keep it polite.
+  // YouTube Music runs alongside as a second source, so anything Saavn is
+  // missing (English chart hits, K-pop, anime, indie) still surfaces.
   const variantPromises = vs.slice(0, 3).map(safeSearchSongs);
-  const [primaryAlbums, primaryArtists, primaryPlaylists, global, ...allSongLists] = await Promise.all([
+  const [primaryAlbums, primaryArtists, primaryPlaylists, global, ytSongs, ...allSongLists] = await Promise.all([
     safeSearchAlbums(query),
     safeSearchArtists(query),
     safeSearchPlaylists(query),
     safeGlobal(query),
+    safeYt(query),
     ...variantPromises,
   ]);
 
-  // Merge song results (dedupe by id)
+  // Merge song results (dedupe by id). Saavn first (better quality + lyrics),
+  // then global topQuery, then YouTube Music as the catalog filler.
   const songMap = new Map<string, Song>();
   for (const list of allSongLists) for (const s of list) songMap.set(s.id, s);
-  // Add global topQuery songs (they're the canonical match per saavn)
   if (global?.songs?.results) for (const s of global.songs.results) if (!songMap.has(s.id)) songMap.set(s.id, s);
 
+  // YouTube songs are kept aside so the ranker can score them on the same
+  // signals (name match, artist match, duration sanity) as Saavn songs.
   const merged = Array.from(songMap.values());
-  const songs = rankSongs(merged, query);
+  const ranked = rankSongs(merged, query);
+
+  // Append any YouTube hits whose normalized "name + primary artist" key isn't
+  // already represented by a Saavn song. Saavn wins on duplicates because its
+  // 320kbps audio + lyrics ID are richer than what we get from YouTube.
+  const haveKeys = new Set(
+    ranked.map((s) => `${(s.name || "").toLowerCase().trim()}::${(s.artists?.primary?.[0]?.name || "").toLowerCase().trim()}`),
+  );
+  const ytFiltered: Song[] = [];
+  for (const y of ytSongs) {
+    const key = `${(y.name || "").toLowerCase().trim()}::${(y.artists?.primary?.[0]?.name || "").toLowerCase().trim()}`;
+    if (!haveKeys.has(key)) {
+      haveKeys.add(key);
+      ytFiltered.push(y);
+    }
+  }
+  const ytRanked = rankSongs(ytFiltered, query);
 
   return {
-    songs,
+    songs: [...ranked, ...ytRanked],
     albums: primaryAlbums,
     artists: primaryArtists,
     playlists: primaryPlaylists,

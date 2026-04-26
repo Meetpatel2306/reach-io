@@ -1,5 +1,5 @@
 {
-  "version": "v5",
-  "buildTime": "2026-04-26T13:00:00Z",
-  "notes": "Fixed icon import crash on navigation. App now stable across all pages."
+  "version": "v6",
+  "buildTime": "2026-04-26T14:00:00Z",
+  "notes": "Sign in with Google — no App Password needed for Gmail users"
 }

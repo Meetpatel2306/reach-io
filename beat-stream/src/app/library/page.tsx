@@ -2,11 +2,11 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Plus, Heart, Trash2, Search as SearchIcon, X, HardDrive, Grid3x3, List, ListMusic, Flame, Clock, Shuffle } from "lucide-react";
+import { Plus, Heart, Trash2, Search as SearchIcon, X, HardDrive, Grid3x3, List, ListMusic, Flame, Clock, Shuffle, Sparkles, FolderPlus, Upload, Link2 } from "lucide-react";
 import { useLibrary } from "@/contexts/LibraryContext";
 import { useToast } from "@/contexts/ToastContext";
 import { usePlayer } from "@/contexts/PlayerContext";
-import { songCache, downloads, counts } from "@/lib/storage";
+import { songCache, downloads, counts, smartPlaylists, localFiles, type SmartPlaylist } from "@/lib/storage";
 import { audioCache } from "@/lib/audioCache";
 import { api } from "@/lib/api";
 import { cached, TTL } from "@/lib/cache";
@@ -16,6 +16,11 @@ import { SongRow } from "@/components/SongRow";
 import { UserPlaylistCard } from "@/components/PlaylistCard";
 import { AlbumCard } from "@/components/AlbumCard";
 import { ArtistCard } from "@/components/ArtistCard";
+import { SmartPlaylistEditor } from "@/components/SmartPlaylistEditor";
+import { evaluateSmartPlaylist } from "@/lib/smartPlaylistEval";
+import { importFiles, removeLocal } from "@/lib/localFiles";
+import { decodeShareUrl, importFromShare } from "@/lib/sharePlaylist";
+import { importSpotifyPlaylist } from "@/lib/importSpotify";
 
 type Tab = "all" | "playlists" | "songs" | "albums" | "artists" | "downloads";
 
@@ -24,14 +29,56 @@ function LibraryInner() {
   const initial = (params.get("tab") as Tab) || "all";
   const [tab, setTab] = useState<Tab>(initial);
   const [view, setView] = useState<"grid" | "list">("grid");
-  const [sort, setSort] = useState<"recent" | "alpha" | "plays">("recent");
+  const [sort, setSort] = useState<"recent" | "alpha" | "plays" | "duration" | "year">("recent");
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
+  const [showSmart, setShowSmart] = useState<SmartPlaylist | null | "new">(null);
+  const [smartList, setSmartList] = useState<SmartPlaylist[]>([]);
+  const [localList, setLocalList] = useState(() => (typeof window !== "undefined" ? localFiles.list() : []));
+  const [dragHover, setDragHover] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importing, setImporting] = useState(false);
 
+  // Hooks that the effects below depend on must be declared first to avoid
+  // the "block-scoped variable used before its declaration" type error.
   const { likedIds, savedAlbumIds, followedArtistIds, userPlaylists, downloadIds, createPlaylist, deletePlaylist, refreshDownloads, topPlayed } = useLibrary();
   const { toast } = useToast();
   const player = usePlayer();
+
+  useEffect(() => { setSmartList(smartPlaylists.list()); }, [showSmart]);
+
+  // Auto-import shared playlist via ?import=BASE64
+  useEffect(() => {
+    const code = params.get("import");
+    if (!code) return;
+    const decoded = decodeShareUrl(code);
+    if (decoded) {
+      const p = importFromShare(decoded);
+      toast(`Imported "${p.name}" with ${p.songIds.length} songs`, "success");
+      window.history.replaceState({}, "", "/library");
+    }
+  }, [params, toast]);
+
+  async function handleFiles(files: FileList | File[]) {
+    const songs = await importFiles(files);
+    setLocalList(localFiles.list());
+    toast(`Imported ${songs.length} file${songs.length !== 1 ? "s" : ""}`, "success");
+  }
+
+  async function handleImportSpotify() {
+    if (!importUrl.trim()) return;
+    setImporting(true);
+    try {
+      const r = await importSpotifyPlaylist(importUrl.trim());
+      toast(`Imported "${r.name}" — matched ${r.matched}/${r.total}`, "success");
+      setImportUrl(""); setShowImport(false);
+    } catch (e: any) {
+      toast(e?.message || "Import failed", "error");
+    }
+    setImporting(false);
+  }
 
   const cache = typeof window !== "undefined" ? songCache.all() : {};
   const likedSongs: Song[] = likedIds.map((id) => cache[id]).filter(Boolean);
@@ -45,6 +92,12 @@ function LibraryInner() {
     }
     if (sort === "alpha") arr = [...arr].sort((a, b) => a.name.localeCompare(b.name));
     if (sort === "plays") arr = [...arr].sort((a, b) => counts.get(b.id) - counts.get(a.id));
+    if (sort === "duration") arr = [...arr].sort((a, b) => {
+      const da = typeof a.duration === "string" ? parseInt(a.duration, 10) : (a.duration || 0);
+      const db = typeof b.duration === "string" ? parseInt(b.duration, 10) : (b.duration || 0);
+      return db - da;
+    });
+    if (sort === "year") arr = [...arr].sort((a, b) => Number(b.year || 0) - Number(a.year || 0));
     return arr;
   }, [likedSongs, search, sort]);
 
@@ -118,8 +171,112 @@ function LibraryInner() {
           <option value="recent">Recently Added</option>
           <option value="alpha">Alphabetical</option>
           <option value="plays">Most Played</option>
+          <option value="duration">Duration</option>
+          <option value="year">Year</option>
         </select>
+        <button onClick={() => setShowSmart("new")} className="px-3 py-2 text-sm bg-accent/15 hover:bg-accent/25 text-accent rounded-lg flex items-center gap-1">
+          <Sparkles className="w-4 h-4" /> Smart playlist
+        </button>
+        <button onClick={() => setShowImport(true)} className="px-3 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-lg flex items-center gap-1">
+          <Link2 className="w-4 h-4" /> Import
+        </button>
+        <label className="px-3 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-lg flex items-center gap-1 cursor-pointer">
+          <Upload className="w-4 h-4" /> Local files
+          <input type="file" multiple accept="audio/*,.mp3,.flac,.m4a,.ogg,.wav,.aac" className="hidden"
+            onChange={(e) => { if (e.target.files) handleFiles(e.target.files); e.currentTarget.value = ""; }} />
+        </label>
       </div>
+
+      {/* Smart playlists strip */}
+      {smartList.length > 0 && (
+        <section className="mb-8">
+          <h2 className="section-title text-lg mb-3 px-1">Smart Playlists</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {smartList.map((sp) => {
+              const matches = evaluateSmartPlaylist(sp);
+              return (
+                <button key={sp.id} onClick={() => matches.length && player.playList(matches, 0, sp.name)}
+                  className="bg-gradient-to-br from-accent/30 via-accent/10 to-transparent border border-accent/30 rounded-xl p-4 text-left hover:scale-[1.02] transition group">
+                  <div className="flex items-start justify-between mb-2">
+                    <Sparkles className="w-5 h-5 text-accent" />
+                    <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${sp.name}"?`)) { smartPlaylists.remove(sp.id); setSmartList(smartPlaylists.list()); } }}
+                      className="opacity-0 group-hover:opacity-100 text-secondary hover:text-red-400">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="font-bold line-clamp-1">{sp.name}</div>
+                  <div className="text-xs text-secondary mt-1">{matches.length} matches • {sp.rules.length} rule{sp.rules.length !== 1 ? "s" : ""}</div>
+                  <button onClick={(e) => { e.stopPropagation(); setShowSmart(sp); }}
+                    className="text-[11px] text-accent hover:underline mt-2">Edit</button>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Local files (always visible if user has any) */}
+      {localList.length > 0 && (
+        <section className="mb-8">
+          <h2 className="section-title text-lg mb-3 px-1">Local Files <span className="text-sm font-normal text-secondary">{localList.length}</span></h2>
+          <div className="space-y-1">
+            {localList.map((lf) => {
+              const s = (typeof window !== "undefined" ? songCache.get(lf.id) : null) as Song | null;
+              if (!s) return null;
+              return (
+                <div key={lf.id} className="flex items-center gap-2">
+                  <div className="flex-1"><SongRow song={s} queue={localList.map((x) => songCache.get(x.id)).filter(Boolean) as Song[]} /></div>
+                  <button onClick={async () => { await removeLocal(lf.id); setLocalList(localFiles.list()); toast("Removed", "info"); }}
+                    className="p-2 text-secondary hover:text-red-400" title="Delete local file">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Drop-zone when dragging files over the page */}
+      {dragHover && (
+        <div className="fixed inset-0 z-50 bg-accent/30 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="bg-card rounded-2xl p-12 border-2 border-dashed border-accent">
+            <Upload className="w-16 h-16 text-accent mx-auto mb-4" />
+            <div className="text-2xl font-bold">Drop files to import</div>
+          </div>
+        </div>
+      )}
+
+      {/* Import-from-URL modal */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !importing && setShowImport(false)}>
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">Import from URL</h3>
+              <button onClick={() => !importing && setShowImport(false)} className="p-1 hover:bg-white/10 rounded"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-secondary mb-3">Paste a Spotify or BeatStream playlist link. We'll find each song on JioSaavn / YouTube Music.</p>
+            <input
+              autoFocus value={importUrl} onChange={(e) => setImportUrl(e.target.value)}
+              placeholder="https://open.spotify.com/playlist/…"
+              className="w-full bg-bg border border-white/10 rounded-lg px-3 py-2 outline-none focus:border-accent mb-3" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => !importing && setShowImport(false)} className="px-4 py-2 text-secondary hover:text-white">Cancel</button>
+              <button onClick={handleImportSpotify} disabled={importing || !importUrl.trim()}
+                className="px-4 py-2 bg-accent text-black font-semibold rounded-full disabled:opacity-50">
+                {importing ? "Importing…" : "Import"}
+              </button>
+            </div>
+            <p className="text-[11px] text-secondary mt-3">Spotify import works for public playlists only. For BeatStream-shared links, just paste — they import instantly.</p>
+          </div>
+        </div>
+      )}
+
+      {showSmart && (
+        <SmartPlaylistEditor
+          existing={showSmart === "new" ? undefined : showSmart}
+          onClose={() => setShowSmart(null)} />
+      )}
 
       {(tab === "all" || tab === "playlists") && (
         <section className="mb-8">

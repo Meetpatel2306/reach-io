@@ -165,6 +165,9 @@ export class Equalizer {
       out.connect(ctx.destination);
 
       this.attached = true;
+      // Expose globally so the visualizer can attach an AnalyserNode without
+      // us creating a second AudioContext.
+      try { (window as any).__bsEqualizer = this; } catch {}
     } catch {}
   }
 

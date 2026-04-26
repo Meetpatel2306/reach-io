@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown, Play, Pause, SkipForward, SkipBack, Shuffle, Repeat, Repeat1,
   Heart, ListMusic, Mic2, Download, Share2, Volume2, VolumeX, MoreHorizontal,
-  Moon, Settings2, Check, Car
+  Moon, Settings2, Check, Car, Gauge, Sparkles, Image as ImageIcon, Repeat2
 } from "lucide-react";
 import Link from "next/link";
 import { usePlayer } from "@/contexts/PlayerContext";
@@ -17,6 +17,8 @@ import { extractDominantColor } from "@/lib/colorExtract";
 import { QueuePanel } from "./QueuePanel";
 import { LyricsPanel } from "./LyricsPanel";
 import { Seekbar } from "./Seekbar";
+import { Visualizer } from "./Visualizer";
+import { shareStoryImage } from "@/lib/storyShare";
 import type { Quality } from "@/lib/types";
 
 export function FullPlayer() {
@@ -26,7 +28,9 @@ export function FullPlayer() {
   const { settings, update } = useSettings();
   const [showSleep, setShowSleep] = useState(false);
   const [showQuality, setShowQuality] = useState(false);
+  const [showSpeed, setShowSpeed] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showVisualizer, setShowVisualizer] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [bgColor, setBgColor] = useState("#1f1f1f");
   const [glowColor, setGlowColor] = useState("rgba(0,0,0,0.4)");
@@ -157,20 +161,22 @@ export function FullPlayer() {
 
         <div className="flex-1 flex flex-col lg:flex-row gap-6 px-4 md:px-8 lg:px-16 pb-6">
           <div className="flex-1 flex items-center justify-center min-h-0 py-4">
-            {player.showLyrics ? (
-              <LyricsPanel song={song} />
-            ) : player.showQueue ? (
+            {player.showQueue ? (
               <QueuePanel />
             ) : showInfo ? (
               <InfoPanel song={song} playCount={playCount} quality={settings.quality} onClose={() => setShowInfo(false)} />
             ) : (
-              <div className="relative max-w-md w-full">
+              // Album art stays visible at all times so lyrics never feel like
+              // they swallow the player. The compact lyrics card sits just
+              // beneath the art when toggled on.
+              <div className="relative max-w-md w-full flex flex-col items-center gap-4">
                 <img
                   src={pickImage(song.image, "high")}
                   alt=""
                   className={`w-full aspect-square object-cover art-glow ${settings.vinylRotation ? "rounded-full spin-slow" : ""} ${!player.isPlaying ? "spin-paused" : ""}`}
                   style={{ ["--glow-color" as string]: glowColor }}
                 />
+                {player.showLyrics && <LyricsPanel song={song} />}
               </div>
             )}
           </div>
@@ -208,6 +214,11 @@ export function FullPlayer() {
             </div>
 
             <div className="no-drag">
+              {showVisualizer && (
+                <div className="mb-2 text-accent">
+                  <Visualizer height={48} />
+                </div>
+              )}
               <Seekbar
                 progress={player.progress}
                 buffered={player.duration ? player.buffered / player.duration : 0}
@@ -221,9 +232,15 @@ export function FullPlayer() {
             </div>
 
             <div className="flex items-center justify-between no-drag">
-              <button onClick={player.toggleShuffle} className={`p-2 relative ${player.shuffle ? "text-accent" : "text-white/70 hover:text-white"}`} aria-label="Shuffle">
-                <Shuffle className="w-5 h-5" />
-                {player.shuffle && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />}
+              <button
+                onClick={player.toggleShuffle}
+                onDoubleClick={player.toggleSmartShuffle}
+                className={`p-2 relative ${player.smartShuffle ? "text-accent" : player.shuffle ? "text-accent" : "text-white/70 hover:text-white"}`}
+                aria-label={player.smartShuffle ? "Smart Shuffle" : "Shuffle"}
+                title={player.smartShuffle ? "Smart Shuffle (double-click to toggle)" : player.shuffle ? "Shuffle (double-click for Smart)" : "Shuffle"}
+              >
+                {player.smartShuffle ? <Sparkles className="w-5 h-5" /> : <Shuffle className="w-5 h-5" />}
+                {(player.shuffle || player.smartShuffle) && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />}
               </button>
               <button onClick={player.prev} className="p-2 text-white hover:scale-110 transition" aria-label="Previous">
                 <SkipBack className="w-7 h-7 fill-white" />
@@ -272,6 +289,35 @@ export function FullPlayer() {
                   </div>
                 )}
               </div>
+              <div className="relative">
+                <button onClick={() => { setShowSpeed(!showSpeed); setShowSleep(false); setShowQuality(false); }} className={`p-2 ${player.playbackRate !== 1 ? "text-accent" : "hover:text-white"}`} title="Playback speed" aria-label="Speed">
+                  <Gauge className="w-5 h-5" />
+                  {player.playbackRate !== 1 && <span className="block text-[9px] font-bold tabular-nums text-accent text-center">{player.playbackRate}x</span>}
+                </button>
+                {showSpeed && (
+                  <div className="absolute right-0 bottom-full mb-2 glass-strong rounded-xl shadow-2xl p-1.5 min-w-[100px] z-10">
+                    {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((r) => (
+                      <button key={r}
+                        onClick={() => { player.setPlaybackRate(r); setShowSpeed(false); toast(`Speed: ${r}x`, "success"); }}
+                        className={`w-full text-left px-3 py-2 rounded text-sm hover:bg-white/10 flex items-center gap-2 ${player.playbackRate === r ? "text-accent" : "text-white"}`}>
+                        {player.playbackRate === r && <Check className="w-3 h-3" />} {r}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={async () => { if (!song) return; toast("Generating share image…", "info"); try { await shareStoryImage(song); } catch { toast("Share failed", "error"); } }}
+                className="p-2 hover:text-white" title="Share as story" aria-label="Share story"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowVisualizer((v) => !v)}
+                className={`p-2 ${showVisualizer ? "text-accent" : "hover:text-white"}`} title="Visualizer" aria-label="Visualizer"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="10" width="3" height="10"/><rect x="7" y="6" width="3" height="14"/><rect x="12" y="2" width="3" height="18"/><rect x="17" y="8" width="3" height="12"/></svg>
+              </button>
               <div className="relative">
                 <button onClick={() => { setShowSleep(!showSleep); setShowQuality(false); }} className={`p-2 relative ${player.sleepTimer != null ? "text-accent" : "hover:text-white"}`} title="Sleep" aria-label="Sleep">
                   <Moon className="w-5 h-5" />

@@ -1,6 +1,6 @@
 "use client";
 import { use, useEffect, useState } from "react";
-import { Play, Loader2, BadgeCheck, UserPlus, UserCheck } from "lucide-react";
+import { Play, Loader2, BadgeCheck, UserPlus, UserCheck, Radio } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Artist, Song, Album } from "@/lib/types";
 import { decodeHtml, pickImage } from "@/lib/utils";
@@ -60,13 +60,20 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
         </div>
       </div>
 
-      <div className="px-4 md:px-8 lg:px-12 py-6 flex items-center gap-6">
+      <div className="px-4 md:px-8 lg:px-12 py-6 flex items-center gap-6 flex-wrap">
         <button onClick={() => songs.length && player.playList(songs, 0, artist.name)} className="btn-icon-large" aria-label="Play">
           <Play className="w-7 h-7 fill-black ml-1" />
         </button>
         <button onClick={() => { const a = toggleFollowedArtist(artist.id); toast(a ? `Following ${artist.name}` : `Unfollowed`, a ? "success" : "info"); }}
           className={`px-6 py-2 rounded-full font-bold text-sm border-2 transition flex items-center gap-2 ${followed ? "border-white/30 text-white hover:border-white/60" : "border-white text-white hover:scale-105"}`}>
           {followed ? <><UserCheck className="w-4 h-4" /> Following</> : <><UserPlus className="w-4 h-4" /> Follow</>}
+        </button>
+        <button
+          onClick={() => songs.length && player.playList(songs, 0, `${artist.name} Radio`)}
+          className="px-5 py-2 rounded-full font-semibold text-sm bg-white/10 hover:bg-white/20 transition flex items-center gap-2"
+          title="Start an endless radio of similar songs"
+        >
+          <Radio className="w-4 h-4" /> Start Radio
         </button>
       </div>
 

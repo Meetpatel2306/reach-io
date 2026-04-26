@@ -12,6 +12,8 @@ const navItems = [
 ];
 
 const secondary = [
+  { href: "/charts", label: "Top Charts", icon: ListMusic },
+  { href: "/decades", label: "Decades", icon: Clock },
   { href: "/history", label: "History", icon: Clock },
   { href: "/wrapped", label: "Wrapped", icon: Sparkles },
   { href: "/queue", label: "Queue", icon: ListMusic },
