@@ -17,6 +17,9 @@ interface LoadPayload {
   resumeFile: File;
   resumeFilename: string;
   resumeName: string;
+  // Raw slot data — kept around so the send path can decode a fresh File at
+  // send time, bypassing any chance of stale React state.
+  resumeBase64: string;
 }
 
 interface Props {
@@ -150,7 +153,24 @@ export function SavedSlotsBar({
     }
     setBusy(true);
     try {
-      const base64 = await fileToBase64(currentResumeFile);
+      // The current resumeFile may be a zero-byte placeholder (created when the
+      // user picked a saved resume in ResumesPicker — only the `size` field is
+      // faked). Read the real blob; if it's empty, fall back to the server-stored
+      // copy via currentResumeFilename so the slot gets actual bytes baked in.
+      let blob: Blob = currentResumeFile;
+      let realSize = (await currentResumeFile.arrayBuffer()).byteLength;
+      if (realSize === 0 && currentResumeFilename) {
+        const res = await fetch(`/api/upload-resume?name=${encodeURIComponent(currentResumeFilename)}`);
+        if (res.ok) {
+          blob = await res.blob();
+          realSize = blob.size;
+        }
+      }
+      if (realSize === 0) {
+        throw new Error("Resume content is empty. Re-upload the resume, then save this slot.");
+      }
+      const fileForBase64 = new File([blob], currentResumeFile.name, { type: currentResumeFile.type || "application/pdf" });
+      const base64 = await fileToBase64(fileForBase64);
       const r = await fetch("/api/jobs/slots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -160,7 +180,7 @@ export function SavedSlotsBar({
           body: currentBody,
           resumeName: currentResumeFile.name,
           resumeBase64: base64,
-          resumeSize: currentResumeFile.size,
+          resumeSize: realSize,
         }),
       });
       const data = await r.json();
@@ -179,6 +199,9 @@ export function SavedSlotsBar({
     setError(""); setLoadingId(slot.id);
     try {
       const file = base64ToFile(slot.resumeBase64, slot.resumeName);
+      if (file.size === 0) {
+        throw new Error(`Slot "${slot.name}" has no resume content. Re-upload your resume in step 1, then save this slot again.`);
+      }
       // Re-upload to the server so resumeFilename is valid for the next send.
       const fd = new FormData();
       fd.append("resume", file);
@@ -188,17 +211,21 @@ export function SavedSlotsBar({
         const data = await res.json();
         serverFilename = data.filename || "";
       } catch {}
+      // Use the slot's content verbatim — subject, body, and resume bytes flow
+      // straight to the send pipeline; the parent's send handler picks them up
+      // without re-validating.
       onLoad({
         subject: slot.subject,
         body: slot.body,
         resumeFile: file,
         resumeFilename: serverFilename,
         resumeName: slot.resumeName,
+        resumeBase64: slot.resumeBase64,
       });
       setActiveSlotId(slot.id);
       setActiveSnapshot({ subject: slot.subject, body: slot.body, resumeName: slot.resumeName });
     } catch (e) {
-      setError(`Load failed: ${e}`);
+      setError(`Load failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       setLoadingId("");
     }

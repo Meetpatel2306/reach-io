@@ -115,6 +115,11 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const resumeRef = useRef<HTMLInputElement>(null);
+  // When a Quick Slot is loaded, keep the slot's raw resumeBase64 around so
+  // handleSend can decode a fresh File at send time. Bypasses any case where
+  // the in-memory `resumeFile` lost its bytes (e.g. placeholder from picker
+  // or a stale state copy).
+  const slotResumeRef = useRef<{ base64: string; name: string; subject: string; body: string } | null>(null);
 
   const [subject, setSubject] = useState(STATIC_SUBJECT);
   const [body, setBody] = useState(STATIC_BODY);
@@ -522,6 +527,7 @@ export default function Home() {
   };
 
   const handleResumeUpload = async (file: File) => {
+    slotResumeRef.current = null;
     setResumeFile(file);
     setUploading(true);
     addLog(`Uploading: ${file.name}...`);
@@ -548,6 +554,7 @@ export default function Home() {
 
   const removeResume = () => {
     setResumeFile(null); setResumeFilename(""); setResumeSaved(false);
+    slotResumeRef.current = null;
     if (resumeRef.current) resumeRef.current.value = "";
     addLog("Resume removed"); setCurrentStep(1);
   };
@@ -612,8 +619,37 @@ export default function Home() {
     fd.append("body", body);
     fd.append("minDelay", minDelay.toString());
     fd.append("maxDelay", maxDelay.toString());
-    if (resumeFilename) fd.append("resumeFilename", resumeFilename);
-    if (resumeFile) fd.append("resumeFile", resumeFile);
+
+    // Resume attachment — if a slot was loaded and its content is still in the
+    // editor untouched, decode the slot's stored bytes fresh at send time.
+    // Otherwise fall back to the live resumeFile + resumeFilename.
+    const slot = slotResumeRef.current;
+    const slotMatches = slot && slot.subject === subject && slot.body === body;
+    let resumeAttached = false;
+    if (slotMatches && slot) {
+      try {
+        const slotFile = base64ToFile(slot.base64, slot.name);
+        if (slotFile.size > 0) {
+          fd.append("resumeFile", slotFile);
+          resumeAttached = true;
+          addLog(`Attaching resume from slot: ${slot.name} (${(slotFile.size / 1024).toFixed(1)} KB)`);
+        }
+      } catch (err) {
+        addLog(`Slot resume decode failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    if (!resumeAttached) {
+      // Server prefers resumeFile when its bytes are non-empty; resumeFilename
+      // is the on-disk fallback.
+      if (resumeFilename) fd.append("resumeFilename", resumeFilename);
+      if (resumeFile && resumeFile.size > 0) {
+        fd.append("resumeFile", resumeFile);
+        resumeAttached = true;
+      }
+    }
+    if (resumeSaved && !resumeAttached && !resumeFilename) {
+      addLog("WARNING: resume marked saved but no bytes available — sending without attachment.");
+    }
 
     // Prefer OAuth (Gmail API) when available — falls back to SMTP otherwise
     const oauth = loadOAuth();
@@ -1220,6 +1256,14 @@ export default function Home() {
               setResumeFile(payload.resumeFile);
               setResumeFilename(payload.resumeFilename);
               setResumeSaved(true);
+              // Snapshot the slot's raw resume bytes so handleSend can rebuild
+              // the File fresh at send time — guarantees the attachment.
+              slotResumeRef.current = {
+                base64: payload.resumeBase64,
+                name: payload.resumeName,
+                subject: payload.subject,
+                body: payload.body,
+              };
               // Skip ahead to recipients — both heavy steps are filled in.
               setCurrentStep(recipients.length > 0 ? 4 : 3);
               addLog(`Loaded slot: ${payload.resumeName}`);
@@ -1245,6 +1289,7 @@ export default function Home() {
                     { type: "application/pdf" }
                   );
                   Object.defineProperty(placeholder, "size", { value: picked.sizeBytes });
+                  slotResumeRef.current = null;
                   setResumeFile(placeholder);
                   setResumeFilename(picked.storedFilename);
                   setResumeSaved(true);
@@ -1299,7 +1344,7 @@ export default function Home() {
 
                   {resumeFile && resumeFilename && (
                     <div className="flex gap-3 mt-4">
-                      <button onClick={() => { setResumeFile(null); setResumeFilename(""); if (resumeRef.current) resumeRef.current.value = ""; }}
+                      <button onClick={() => { slotResumeRef.current = null; setResumeFile(null); setResumeFilename(""); if (resumeRef.current) resumeRef.current.value = ""; }}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-sm hover:bg-red-500/20 transition-all">
                         <Trash2 size={14} />Remove
                       </button>
