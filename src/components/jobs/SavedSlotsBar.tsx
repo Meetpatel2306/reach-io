@@ -5,7 +5,7 @@
 // First-load auto-migrates any old localStorage slots up to the server.
 
 import { useEffect, useState } from "react";
-import { Star, Plus, Trash2, FileBox, Mail, Loader2, X, Save, Cloud } from "lucide-react";
+import { Star, Plus, Trash2, FileBox, Mail, Loader2, X, Save, Cloud, Check } from "lucide-react";
 import type { Slot } from "@/lib/jobAppShared";
 
 const LEGACY_KEY = "email-blaster-slots";       // old localStorage key
@@ -104,6 +104,8 @@ export function SavedSlotsBar({
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [migrationMsg, setMigrationMsg] = useState("");
+  const [activeSlotId, setActiveSlotId] = useState<string>("");
+  const [activeSnapshot, setActiveSnapshot] = useState<{ subject: string; body: string; resumeName: string } | null>(null);
 
   const refresh = async () => {
     try {
@@ -124,6 +126,19 @@ export function SavedSlotsBar({
       await refresh();
     })();
   }, []);
+
+  // Clear "in use" highlight when the user edits away from the loaded slot's content.
+  useEffect(() => {
+    if (!activeSlotId || !activeSnapshot) return;
+    const drift =
+      currentSubject !== activeSnapshot.subject ||
+      currentBody !== activeSnapshot.body ||
+      (currentResumeFile?.name || "") !== activeSnapshot.resumeName;
+    if (drift) {
+      setActiveSlotId("");
+      setActiveSnapshot(null);
+    }
+  }, [currentSubject, currentBody, currentResumeFile, activeSlotId, activeSnapshot]);
 
   const canSave = !!(currentSubject.trim() && currentBody.trim() && currentResumeFile);
 
@@ -180,6 +195,8 @@ export function SavedSlotsBar({
         resumeFilename: serverFilename,
         resumeName: slot.resumeName,
       });
+      setActiveSlotId(slot.id);
+      setActiveSnapshot({ subject: slot.subject, body: slot.body, resumeName: slot.resumeName });
     } catch (e) {
       setError(`Load failed: ${e}`);
     } finally {
@@ -191,6 +208,10 @@ export function SavedSlotsBar({
     if (!confirm("Delete this saved slot? (It will be removed from all your devices.)")) return;
     try {
       await fetch(`/api/jobs/slots/${id}`, { method: "DELETE" });
+      if (id === activeSlotId) {
+        setActiveSlotId("");
+        setActiveSnapshot(null);
+      }
       await refresh();
     } catch (e) { setError(String(e)); }
   }
@@ -233,22 +254,36 @@ export function SavedSlotsBar({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {slots.map((slot, idx) => {
             const isLoading = loadingId === slot.id;
+            const isActive = slot.id === activeSlotId;
             return (
               <div
                 key={slot.id}
-                className="relative bg-slate-900/50 border border-slate-700/50 rounded-xl p-3 hover:border-indigo-500/40 transition group"
+                className={`relative rounded-xl p-3 transition group ${
+                  isActive
+                    ? "bg-indigo-500/15 border border-indigo-400 ring-2 ring-indigo-400/60 shadow-[0_0_0_1px_rgba(129,140,248,0.4)]"
+                    : "bg-slate-900/50 border border-slate-700/50 hover:border-indigo-500/40"
+                }`}
               >
+                {isActive && (
+                  <span className="absolute -top-2 left-3 px-1.5 py-0.5 rounded-md bg-indigo-500 text-white text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 shadow">
+                    <Check size={10} /> In use
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => handleLoad(slot)}
                   disabled={isLoading}
                   className="w-full text-left flex items-start gap-3 disabled:opacity-50"
                 >
-                  <span className="shrink-0 w-9 h-9 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-bold inline-flex items-center justify-center text-sm">
+                  <span className={`shrink-0 w-9 h-9 rounded-lg font-bold inline-flex items-center justify-center text-sm border ${
+                    isActive
+                      ? "bg-indigo-500 border-indigo-400 text-white"
+                      : "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
+                  }`}>
                     {isLoading ? <Loader2 size={16} className="animate-spin" /> : `#${idx + 1}`}
                   </span>
                   <div className="min-w-0 flex-1 pr-7">
-                    <p className="text-sm font-semibold text-white truncate">{slot.name}</p>
+                    <p className={`text-sm font-semibold truncate ${isActive ? "text-indigo-100" : "text-white"}`}>{slot.name}</p>
                     <p className="text-xs text-slate-400 truncate inline-flex items-center gap-1 mt-0.5">
                       <Mail size={11} className="shrink-0" />
                       <span className="truncate">{slot.subject || "(no subject)"}</span>
