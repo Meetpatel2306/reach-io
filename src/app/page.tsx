@@ -699,6 +699,13 @@ export default function Home() {
             </div>
           )}
           <Link
+            href="/jobs"
+            className="p-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-all"
+            title="Job Mailer — apply to jobs faster"
+          >
+            <Send size={18} />
+          </Link>
+          <Link
             href="/guide"
             data-tour="guide"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
