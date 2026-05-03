@@ -190,6 +190,10 @@ export function alreadyContacted(history: SendRecord[], email: string, withinDay
 
 // ---------- Default templates (used by server seeder) ----------
 
+// Bump this whenever DEFAULT_TEMPLATES content changes — server will overwrite
+// existing templates with the same name on next load.
+export const TEMPLATES_SEED_VERSION = 3;
+
 export const DEFAULT_TEMPLATES: Omit<Template, "id" | "createdAt" | "updatedAt">[] = [
   {
     name: "Python Backend Developer",

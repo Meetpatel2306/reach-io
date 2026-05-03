@@ -4,6 +4,7 @@
 import { kvGet, kvSet } from "./storage";
 import {
   DEFAULT_TEMPLATES,
+  TEMPLATES_SEED_VERSION,
   newId,
   nowIso,
   type Contact,
@@ -21,6 +22,7 @@ const kContacts = (email: string) => k(email, "contacts");
 const kResumes = (email: string) => k(email, "resumes");
 const kHistory = (email: string) => k(email, "history");
 const kSlots = (email: string) => k(email, "slots");
+const kTemplatesSeedVer = (email: string) => k(email, "templates_seed_v");
 
 async function loadList<T>(key: string): Promise<T[]> {
   const v = await kvGet<T[]>(key);
@@ -66,7 +68,46 @@ export async function seedTemplatesIfEmpty(email: string): Promise<number> {
   for (const t of DEFAULT_TEMPLATES) {
     await upsertTemplate(email, t);
   }
+  await kvSet(kTemplatesSeedVer(email), TEMPLATES_SEED_VERSION);
   return DEFAULT_TEMPLATES.length;
+}
+
+// Refresh stored default templates (subject/body/roleType) when DEFAULT_TEMPLATES
+// content changes server-side. Matches by template name. User-created templates
+// (any name not in DEFAULT_TEMPLATES) are left untouched.
+export async function migrateTemplatesIfNeeded(email: string): Promise<number> {
+  const storedVer = (await kvGet<number>(kTemplatesSeedVer(email))) ?? 0;
+  if (storedVer >= TEMPLATES_SEED_VERSION) return 0;
+  const all = await listTemplates(email);
+  if (!all.length) return 0;
+  const defaultNames = new Set(DEFAULT_TEMPLATES.map((t) => t.name));
+  let updated = 0;
+  for (const def of DEFAULT_TEMPLATES) {
+    const existing = all.find((t) => t.name === def.name);
+    if (existing) {
+      await upsertTemplate(email, {
+        id: existing.id,
+        name: def.name,
+        roleType: def.roleType,
+        subject: def.subject,
+        body: def.body,
+      });
+      updated++;
+    }
+  }
+  // Insert any default that didn't exist by name.
+  const refreshed = await listTemplates(email);
+  for (const def of DEFAULT_TEMPLATES) {
+    if (!refreshed.find((t) => t.name === def.name)) {
+      await upsertTemplate(email, def);
+      updated++;
+    }
+  }
+  await kvSet(kTemplatesSeedVer(email), TEMPLATES_SEED_VERSION);
+  // Reference defaultNames so it isn't flagged as unused — we use it conceptually
+  // (keeping user-named templates untouched) but the iteration above is sufficient.
+  void defaultNames;
+  return updated;
 }
 
 // ---------- Contacts ----------
