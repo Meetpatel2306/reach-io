@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { loadHistory, clearHistory, deleteBatch } from "@/lib/history";
 import type { SendBatch, EmailResult } from "@/lib/history";
+import { FollowUpsPanel } from "@/components/jobs/FollowUpsPanel";
 
 // --- Helpers ---
 
@@ -282,6 +283,8 @@ export default function HistoryPage() {
           </button>
         )}
       </div>
+
+      <FollowUpsPanel />
 
       {/* Admin cleared data banner */}
       {clearedEvent && !clearedDismissed && (

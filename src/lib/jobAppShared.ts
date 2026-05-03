@@ -84,7 +84,16 @@ export function deriveFirstName(fullName: string | undefined, email: string | un
   return "Hiring Team";
 }
 
-export function buildContext(c: Pick<Contact, "name" | "email" | "company" | "role" | "custom1" | "custom2">): Record<string, string> {
+export interface ContextInput {
+  name?: string;
+  email?: string;
+  company?: string;
+  role?: string;
+  custom1?: string;
+  custom2?: string;
+}
+
+export function buildContext(c: ContextInput): Record<string, string> {
   return {
     name: c.name || "Hiring Team",
     first_name: deriveFirstName(c.name, c.email),

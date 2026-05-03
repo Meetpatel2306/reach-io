@@ -14,8 +14,20 @@ import type { EmailResult } from "@/lib/history";
 import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate, BUNDLED_VERSION } from "@/lib/updater";
 import { loadOAuth, clearOAuth, consumeOAuthFragment, startOAuth, getValidAccessToken, type OAuthSession } from "@/lib/oauth";
 import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
+import { TemplatePicker } from "@/components/jobs/TemplatePicker";
+import { ContactsPicker } from "@/components/jobs/ContactsPicker";
+import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 
-interface Recipient { name: string; email: string; }
+interface Recipient {
+  name: string;
+  email: string;
+  // Optional fields used for {company}/{role} placeholder rendering when sending
+  // (filled when recipients come from saved Contacts).
+  company?: string;
+  role?: string;
+  custom1?: string;
+  custom2?: string;
+}
 interface SendResult { email: string; status: string; error?: string; }
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -699,13 +711,6 @@ export default function Home() {
             </div>
           )}
           <Link
-            href="/jobs"
-            className="p-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 transition-all"
-            title="Job Mailer — apply to jobs faster"
-          >
-            <Send size={18} />
-          </Link>
-          <Link
             href="/guide"
             data-tour="guide"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
@@ -1210,6 +1215,25 @@ export default function Home() {
                 <h2 className="text-lg font-semibold text-white">Resume</h2>
               </div>
 
+              <ResumesPicker
+                activeStoredFilename={resumeFilename}
+                onPick={(picked) => {
+                  // Reuse a previously-uploaded resume by its server-side filename.
+                  // Construct a placeholder File so the existing UI shows label + size.
+                  const placeholder = new File(
+                    [new Blob([], { type: "application/pdf" })],
+                    picked.filename,
+                    { type: "application/pdf" }
+                  );
+                  Object.defineProperty(placeholder, "size", { value: picked.sizeBytes });
+                  setResumeFile(placeholder);
+                  setResumeFilename(picked.storedFilename);
+                  setResumeSaved(true);
+                  if (emailSaved) setCurrentStep(3); else setCurrentStep(2);
+                  addLog(`Using saved resume: ${picked.label}`);
+                }}
+              />
+
               {resumeSaved && resumeFile ? (
                 <div className="bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1298,7 +1322,12 @@ export default function Home() {
                 </div>
               ) : (
                 <>
-                  <p className="text-xs text-slate-500 mb-4">Same email goes to all recipients.</p>
+                  <p className="text-xs text-slate-500 mb-4">Same email goes to all recipients (placeholders are personalised per-recipient).</p>
+                  <TemplatePicker
+                    subject={subject}
+                    body={body}
+                    onLoad={(s, b) => { setSubject(s); setBody(b); addLog("Template loaded"); }}
+                  />
                   <div className="space-y-4">
                     <div>
                       <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Subject</label>
@@ -1329,6 +1358,19 @@ export default function Home() {
                 <Users size={20} className="text-violet-400" />
                 <h2 className="text-lg font-semibold text-white">Recipients</h2>
               </div>
+
+              <ContactsPicker
+                currentRecipients={recipients}
+                onAdd={(adds) => {
+                  // Dedupe by email
+                  setRecipients((prev) => {
+                    const have = new Set(prev.map((r) => r.email.toLowerCase()));
+                    const fresh = adds.filter((a) => !have.has(a.email.toLowerCase()));
+                    return [...prev, ...fresh];
+                  });
+                  addLog(`${adds.length} recipients loaded from saved contacts`);
+                }}
+              />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>

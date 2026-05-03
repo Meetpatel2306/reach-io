@@ -4,10 +4,22 @@ import fs from "fs/promises";
 import path from "path";
 import { getSession } from "@/lib/auth";
 import { kvSet } from "@/lib/storage";
+import { buildContext, render as renderPlaceholders } from "@/lib/jobAppShared";
+import { appendHistory, newId, nowIso } from "@/lib/jobApp";
 
 const UPLOADS_DIR = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "uploads");
 
-interface Recipient { name: string; email: string; }
+interface Recipient {
+  name: string;
+  email: string;
+  // Optional fields for {company}/{role}/{custom1}/{custom2} placeholder rendering.
+  company?: string;
+  role?: string;
+  custom1?: string;
+  custom2?: string;
+}
+
+const HAS_PLACEHOLDER = /\{(first_name|name|company|role|custom1|custom2)\}/;
 
 // Build a raw RFC 822 email message for Gmail API
 function buildRawMessage(opts: {
@@ -161,18 +173,25 @@ export async function POST(req: NextRequest) {
     const fromAddress = useOAuth ? oauthEmail : smtpUser;
     const attachment = resumeBuffer ? { filename: resumeName, content: resumeBuffer } : null;
 
+    // Per-recipient placeholder render is only invoked when the template actually
+    // contains placeholders — keeps the simple "same email to all" flow untouched.
+    const personalize = HAS_PLACEHOLDER.test(subject) || HAS_PLACEHOLDER.test(body);
+
     for (let i = 0; i < recipients.length; i++) {
       const r = recipients[i];
+      const ctx = personalize ? buildContext(r) : null;
+      const finalSubject = ctx ? renderPlaceholders(subject, ctx) : subject;
+      const finalBody = ctx ? renderPlaceholders(body, ctx) : body;
 
       try {
         if (useOAuth) {
-          await sendViaGmailApi(oauthAccessToken, fromAddress, r, subject, body, attachment);
+          await sendViaGmailApi(oauthAccessToken, fromAddress, r, finalSubject, finalBody, attachment);
         } else if (transporter) {
           const mailOptions: nodemailer.SendMailOptions = {
             from: fromAddress,
             to: r.email,
-            subject,
-            text: body,
+            subject: finalSubject,
+            text: finalBody,
           };
           if (attachment) {
             mailOptions.attachments = [{ filename: attachment.filename, content: attachment.content }];
@@ -224,6 +243,34 @@ export async function POST(req: NextRequest) {
       };
       await kvSet(`batch:${batchId}`, batch);
       await kvSet(`userbatch:${userEmail}:${batchId}`, batchId);
+
+      // Mirror per-recipient sends into job-mailer history so follow-up tracking
+      // works for everything sent through this endpoint, not just /jobs sends.
+      if (userEmail !== "anonymous") {
+        const sentAt = nowIso();
+        for (const r of results) {
+          const recipient = recipients.find((rec) => rec.email === r.email);
+          await appendHistory(userEmail, {
+            id: newId(),
+            status: r.status as "sent" | "failed",
+            sentAt,
+            contactId: "",
+            contactEmail: r.email,
+            contactName: recipient?.name || "",
+            company: recipient?.company || "",
+            role: recipient?.role || "",
+            templateId: "",
+            templateName: "",
+            resumeId: null,
+            resumeLabel: resumeBuffer ? resumeName : "",
+            subject,
+            body,
+            isFollowUp: false,
+            followUpDone: false,
+            ...(r.error ? { error: r.error } : {}),
+          });
+        }
+      }
     } catch {}
 
     return NextResponse.json({ sent, failed, total: recipients.length, results, method: useOAuth ? "oauth" : "smtp", batchId: savedBatchId });
