@@ -1,22 +1,15 @@
 "use client";
 
-// Saved Slots — bundle a (template + resume) pair into a numbered slot.
-// Click slot N → both template and resume load in one tap → ready to send.
+// Quick Slots — bundle a (template + resume) pair into a numbered slot.
+// Slots live in server-side KV scoped to the user — sync across devices on login.
+// First-load auto-migrates any old localStorage slots up to the server.
 
 import { useEffect, useState } from "react";
-import { Star, Plus, Trash2, FileBox, Mail, Loader2, X, Save } from "lucide-react";
+import { Star, Plus, Trash2, FileBox, Mail, Loader2, X, Save, Cloud } from "lucide-react";
+import type { Slot } from "@/lib/jobAppShared";
 
-export interface Slot {
-  id: string;
-  name: string;
-  subject: string;
-  body: string;
-  resumeName: string;        // original file name (e.g. Meet_Patel_Resume.pdf)
-  resumeFilename: string;    // last-known server-side filename (re-uploaded on load)
-  resumeBase64: string;      // dataURL for client-side re-upload
-  resumeSize: number;
-  savedAt: string;
-}
+const LEGACY_KEY = "email-blaster-slots";       // old localStorage key
+const MIGRATION_FLAG = "email-blaster-slots-migrated-v1";
 
 interface LoadPayload {
   subject: string;
@@ -31,23 +24,7 @@ interface Props {
   currentBody: string;
   currentResumeFile: File | null;
   currentResumeFilename: string;
-  // Page is responsible for setting state and advancing the wizard step.
   onLoad: (payload: LoadPayload) => void;
-}
-
-const STORAGE_KEY = "email-blaster-slots";
-
-function loadSlots(): Slot[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch { return []; }
-}
-
-function saveSlots(s: Slot[]) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch {}
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -68,6 +45,54 @@ function base64ToFile(base64: string, name: string): File {
   return new File([bytes], name, { type: mime });
 }
 
+interface LegacySlot {
+  id?: string;
+  name?: string;
+  subject?: string;
+  body?: string;
+  resumeName?: string;
+  resumeBase64?: string;
+  resumeSize?: number;
+}
+
+async function migrateLegacySlots(): Promise<number> {
+  try {
+    if (localStorage.getItem(MIGRATION_FLAG)) return 0;
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) {
+      localStorage.setItem(MIGRATION_FLAG, "1");
+      return 0;
+    }
+    const parsed: LegacySlot[] = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) {
+      localStorage.setItem(MIGRATION_FLAG, "1");
+      return 0;
+    }
+    let migrated = 0;
+    for (const s of parsed) {
+      if (!s.name || !s.subject || !s.body || !s.resumeBase64) continue;
+      const res = await fetch("/api/jobs/slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: s.name,
+          subject: s.subject,
+          body: s.body,
+          resumeName: s.resumeName || "resume.pdf",
+          resumeBase64: s.resumeBase64,
+          resumeSize: s.resumeSize || 0,
+        }),
+      });
+      if (res.ok) migrated++;
+    }
+    localStorage.setItem(MIGRATION_FLAG, "1");
+    if (migrated > 0) localStorage.removeItem(LEGACY_KEY);
+    return migrated;
+  } catch {
+    return 0;
+  }
+}
+
 export function SavedSlotsBar({
   currentSubject, currentBody, currentResumeFile, currentResumeFilename, onLoad,
 }: Props) {
@@ -77,8 +102,28 @@ export function SavedSlotsBar({
   const [busy, setBusy] = useState(false);
   const [loadingId, setLoadingId] = useState<string>("");
   const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [migrationMsg, setMigrationMsg] = useState("");
 
-  useEffect(() => { setSlots(loadSlots()); }, []);
+  const refresh = async () => {
+    try {
+      const r = await fetch("/api/jobs/slots", { cache: "no-store" });
+      const data = await r.json();
+      if (Array.isArray(data.slots)) setSlots(data.slots);
+    } catch (e) {
+      setError(`Could not load slots: ${e}`);
+    } finally {
+      setLoaded(true);
+    }
+  };
+
+  useEffect(() => {
+    (async () => {
+      const migrated = await migrateLegacySlots();
+      if (migrated > 0) setMigrationMsg(`Synced ${migrated} local slot${migrated === 1 ? "" : "s"} to your account.`);
+      await refresh();
+    })();
+  }, []);
 
   const canSave = !!(currentSubject.trim() && currentBody.trim() && currentResumeFile);
 
@@ -91,22 +136,23 @@ export function SavedSlotsBar({
     setBusy(true);
     try {
       const base64 = await fileToBase64(currentResumeFile);
-      const slot: Slot = {
-        id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4),
-        name: name.trim() || `Slot ${slots.length + 1}`,
-        subject: currentSubject,
-        body: currentBody,
-        resumeName: currentResumeFile.name,
-        resumeFilename: currentResumeFilename,
-        resumeBase64: base64,
-        resumeSize: currentResumeFile.size,
-        savedAt: new Date().toISOString(),
-      };
-      const next = [...slots, slot];
-      saveSlots(next);
-      setSlots(next);
+      const r = await fetch("/api/jobs/slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim() || `Slot ${slots.length + 1}`,
+          subject: currentSubject,
+          body: currentBody,
+          resumeName: currentResumeFile.name,
+          resumeBase64: base64,
+          resumeSize: currentResumeFile.size,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Save failed");
       setName("");
       setShowSaveModal(false);
+      await refresh();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -121,11 +167,11 @@ export function SavedSlotsBar({
       // Re-upload to the server so resumeFilename is valid for the next send.
       const fd = new FormData();
       fd.append("resume", file);
-      let serverFilename = slot.resumeFilename;
+      let serverFilename = "";
       try {
         const res = await fetch("/api/upload-resume", { method: "POST", body: fd });
         const data = await res.json();
-        if (data.filename) serverFilename = data.filename;
+        serverFilename = data.filename || "";
       } catch {}
       onLoad({
         subject: slot.subject,
@@ -141,20 +187,24 @@ export function SavedSlotsBar({
     }
   }
 
-  function handleDelete(id: string) {
-    if (!confirm("Delete this saved slot?")) return;
-    const next = slots.filter((s) => s.id !== id);
-    saveSlots(next);
-    setSlots(next);
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this saved slot? (It will be removed from all your devices.)")) return;
+    try {
+      await fetch(`/api/jobs/slots/${id}`, { method: "DELETE" });
+      await refresh();
+    } catch (e) { setError(String(e)); }
   }
 
   return (
     <div className="bg-indigo-500/5 border border-indigo-500/30 rounded-xl p-3 sm:p-4 mb-4">
       <div className="flex items-start sm:items-center justify-between mb-3 gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Star size={18} className="text-indigo-400" />
           <span className="text-sm sm:text-base font-semibold text-indigo-300">Quick Slots</span>
           <span className="text-[11px] text-slate-500">({slots.length} saved)</span>
+          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400/80 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20" title="Slots sync to your account, available on every device">
+            <Cloud size={10} /> synced
+          </span>
         </div>
         <button
           type="button"
@@ -167,7 +217,15 @@ export function SavedSlotsBar({
         </button>
       </div>
 
-      {slots.length === 0 ? (
+      {migrationMsg && (
+        <div className="text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 rounded px-2 py-1 mb-2">
+          ✓ {migrationMsg}
+        </div>
+      )}
+
+      {!loaded ? (
+        <p className="text-sm text-slate-500 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading slots…</p>
+      ) : slots.length === 0 ? (
         <p className="text-sm text-slate-500">
           No saved slots yet. Fill in the email + attach a resume, then tap <span className="text-indigo-300">Save current</span> — it bundles both into one slot you can re-load anytime in one tap.
         </p>

@@ -15,7 +15,6 @@ import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAu
 import { loadOAuth, clearOAuth, consumeOAuthFragment, startOAuth, getValidAccessToken, type OAuthSession } from "@/lib/oauth";
 import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
-import { ContactsPicker } from "@/components/jobs/ContactsPicker";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
 
@@ -1378,19 +1377,6 @@ export default function Home() {
                 <Users size={20} className="text-violet-400" />
                 <h2 className="text-lg font-semibold text-white">Recipients</h2>
               </div>
-
-              <ContactsPicker
-                currentRecipients={recipients}
-                onAdd={(adds) => {
-                  // Dedupe by email
-                  setRecipients((prev) => {
-                    const have = new Set(prev.map((r) => r.email.toLowerCase()));
-                    const fresh = adds.filter((a) => !have.has(a.email.toLowerCase()));
-                    return [...prev, ...fresh];
-                  });
-                  addLog(`${adds.length} recipients loaded from saved contacts`);
-                }}
-              />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>

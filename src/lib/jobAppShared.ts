@@ -60,6 +60,18 @@ export interface FollowUpEntry extends SendRecord {
   daysSinceSent: number;
 }
 
+export interface Slot {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  resumeName: string;       // original PDF filename
+  resumeBase64: string;     // dataURL — survives cross-device because it's stored server-side
+  resumeSize: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---------- ID + time ----------
 
 export function newId(): string {
@@ -182,23 +194,25 @@ export const DEFAULT_TEMPLATES: Omit<Template, "id" | "createdAt" | "updatedAt">
   {
     name: "Python Backend Developer",
     roleType: "python backend developer",
-    subject: "Application for Python Backend Developer - {company}",
-    body: `Dear {first_name},
+    subject: "Application for Python Backend Developer Role",
+    body: `Dear Hiring Team,
 
-I hope you are doing well. I am writing to apply for Python Backend Developer roles at {company}.
+I hope this message finds you well. I am writing to express my interest in Python Backend Developer opportunities on your team.
 
-I currently work as a Software Developer at NETAI, where I build production backend services and real-time monitoring systems. Selected work:
+I currently work as a Software Developer at NETAI, where I build production backend services and real-time monitoring systems. A few highlights from my recent work:
 
-- Designed and shipped a RADIUS (AAA) integration for centralized device authentication, authorization, and accounting.
-- Architected an end-to-end alerting pipeline (Alertmanager -> Kafka -> ClickHouse) for high-volume real-time alert processing.
+- Designed and shipped a RADIUS (AAA) integration for centralised device authentication, authorisation, and accounting.
+- Architected an end-to-end alerting pipeline (Alertmanager -> Kafka -> ClickHouse) for high-volume real-time alert processing and analytics.
 - Built role-based and site-scoped access control for fine-grained, multi-tenant permissions.
-- Developed real-time 2D network topology visualizations using FastAPI and WebSockets.
+- Developed real-time 2D network topology visualisations using FastAPI and WebSockets.
 
-Stack: Python, FastAPI, Pydantic, SQLAlchemy, Kafka, Redis, Celery, ClickHouse, MySQL, Prometheus, Docker.
+Stack: Python, FastAPI, Pydantic, SQLAlchemy, Apache Kafka, Redis, Celery, ClickHouse, MySQL, Prometheus, Docker.
 
-I would value the opportunity to be considered for the {role} role at {company}. My resume is attached for your review.
+In addition to my professional work, I have built personal projects such as a PDF Chatbot using FAISS and the Mistral model for retrieval-augmented question answering, and a Django-based carpooling platform with integrated payments.
 
-Thank you for your time.
+I would value the opportunity to be considered for any suitable Python Backend Developer openings on your team. My resume is attached for your review, and I would welcome the chance to discuss how my experience aligns with your needs.
+
+Thank you for your time and consideration.
 
 Best regards,
 Meet Patel
@@ -210,22 +224,24 @@ GitHub:   https://github.com/Meetpatel2306
   {
     name: "AI / ML Developer",
     roleType: "ai ml developer",
-    subject: "Application for AI/ML Developer - {company}",
-    body: `Dear {first_name},
+    subject: "Application for AI / ML Developer Role",
+    body: `Dear Hiring Team,
 
-I hope you are doing well. I am writing to apply for AI/ML Developer roles at {company}.
+I hope this message finds you well. I am writing to express my interest in AI / ML Developer opportunities on your team.
 
-My background combines production Python backend engineering with applied AI/ML, which positions me well to ship real-world AI features:
+My background combines production Python backend engineering with applied AI / ML, which I believe positions me well to ship real-world AI features:
 
-- Built an end-to-end RAG chatbot: PDF ingestion -> embeddings -> FAISS vector index -> context retrieval -> grounded answers via the Ollama Mistral LLM.
+- Designed and built an end-to-end RAG chatbot - PDF ingestion -> embeddings -> FAISS vector index -> context retrieval -> grounded answers via the Ollama Mistral LLM, with sub-second retrieval over multi-document corpora.
 - At NETAI, I work on real-time data pipelines (Kafka, ClickHouse) - the same data infrastructure that modern ML platforms rely on for feature stores, telemetry, and model monitoring.
-- Strong in Python, NumPy, Pandas, Pydantic, FastAPI for ML-serving APIs, with hands-on experience in vector search, embeddings, prompt engineering, and integrating local and hosted LLMs.
+- Strong proficiency in Python, NumPy, Pandas, Pydantic, and FastAPI for ML-serving APIs, with hands-on experience in vector search, embeddings, prompt engineering, and integrating both local and hosted LLMs.
 
 Currently exploring: LangChain, LlamaIndex, OpenAI and Anthropic APIs, evaluation frameworks, and embedding pipelines at scale.
 
-I would value the opportunity to be considered for the {role} role at {company}. My resume is attached for your review.
+I am seeking a role where I can contribute to building production AI features - including RAG systems, LLM-powered APIs, and ML data infrastructure - while continuing to grow into deeper ML and MLOps work.
 
-Thank you for your time.
+My resume is attached for your review, and I would be glad to walk you through any of my projects in more detail or discuss how I can contribute to your team.
+
+Thank you for your time and consideration.
 
 Best regards,
 Meet Patel
@@ -237,18 +253,20 @@ GitHub:   https://github.com/Meetpatel2306
   {
     name: "Follow-Up (7 Days)",
     roleType: "follow up",
-    subject: "Re: Application for {role} at {company}",
-    body: `Dear {first_name},
+    subject: "Following Up on My Application",
+    body: `Dear Hiring Team,
 
-I hope you are doing well. I am following up on my previous email regarding the {role} opportunity at {company}.
+I hope you are doing well. I am following up on the application I shared earlier regarding open Developer positions on your team.
 
-I remain very interested in the role and would appreciate any update on my application. I am happy to share additional details, code samples, or take a short call at your convenience.
+I remain very interested in the opportunity and would appreciate any update you can share on my application. I would be happy to provide additional details, code samples, or schedule a short call at your convenience.
 
-Thank you again for your time.
+Thank you again for your time and consideration.
 
 Best regards,
 Meet Patel
 +91 8799474373 | meetpatel4384@gmail.com
+LinkedIn: https://www.linkedin.com/in/meet-patel-34399b286/
+GitHub:   https://github.com/Meetpatel2306
 `,
   },
 ];

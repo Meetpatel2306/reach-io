@@ -9,6 +9,7 @@ import {
   type Contact,
   type ResumeMeta,
   type SendRecord,
+  type Slot,
   type Template,
 } from "./jobAppShared";
 
@@ -19,6 +20,7 @@ const kTemplates = (email: string) => k(email, "templates");
 const kContacts = (email: string) => k(email, "contacts");
 const kResumes = (email: string) => k(email, "resumes");
 const kHistory = (email: string) => k(email, "history");
+const kSlots = (email: string) => k(email, "slots");
 
 async function loadList<T>(key: string): Promise<T[]> {
   const v = await kvGet<T[]>(key);
@@ -151,4 +153,35 @@ export async function updateHistory(email: string, id: string, patch: Partial<Se
   const all = await listHistory(email);
   const next = all.map((r) => (r.id === id ? { ...r, ...patch } : r));
   await kvSet(kHistory(email), next);
+}
+
+// ---------- Quick Slots (template + resume bundles) ----------
+
+export async function listSlots(email: string): Promise<Slot[]> {
+  return loadList<Slot>(kSlots(email));
+}
+
+export async function upsertSlot(email: string, s: Partial<Slot>): Promise<Slot> {
+  const all = await listSlots(email);
+  const id = s.id || newId();
+  const now = nowIso();
+  const existing = all.find((x) => x.id === id);
+  const merged: Slot = {
+    id,
+    name: s.name || existing?.name || "Untitled slot",
+    subject: s.subject ?? existing?.subject ?? "",
+    body: s.body ?? existing?.body ?? "",
+    resumeName: s.resumeName ?? existing?.resumeName ?? "",
+    resumeBase64: s.resumeBase64 ?? existing?.resumeBase64 ?? "",
+    resumeSize: s.resumeSize ?? existing?.resumeSize ?? 0,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+  await kvSet(kSlots(email), [...all.filter((x) => x.id !== id), merged]);
+  return merged;
+}
+
+export async function deleteSlot(email: string, id: string): Promise<void> {
+  const all = await listSlots(email);
+  await kvSet(kSlots(email), all.filter((s) => s.id !== id));
 }
