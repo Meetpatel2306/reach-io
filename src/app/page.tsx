@@ -17,7 +17,6 @@ import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
-import { SendStepCombo } from "@/components/jobs/SendStepCombo";
 
 interface Recipient {
   name: string;
@@ -1443,26 +1442,6 @@ export default function Home() {
                 <Send size={20} className="text-violet-400" />
                 <h2 className="text-lg font-semibold text-white">Send Emails</h2>
               </div>
-
-              <SendStepCombo
-                currentSubject={subject}
-                currentBody={body}
-                currentResumeFile={resumeFile}
-                currentResumeFilename={resumeFilename}
-                onApplyTemplate={(s, b) => {
-                  setSubject(s); setBody(b); setEmailSaved(true);
-                  addLog("Template applied at send time");
-                }}
-                onApply={(payload) => {
-                  setSubject(payload.subject);
-                  setBody(payload.body);
-                  setEmailSaved(true);
-                  setResumeFile(payload.resumeFile);
-                  setResumeFilename(payload.resumeFilename);
-                  setResumeSaved(true);
-                  addLog(`Loaded combo: ${payload.resumeName}`);
-                }}
-              />
 
               <div className="grid grid-cols-3 gap-3 mb-5">
                 {[
