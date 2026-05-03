@@ -17,6 +17,7 @@ import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
 import { ContactsPicker } from "@/components/jobs/ContactsPicker";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
+import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
 
 interface Recipient {
   name: string;
@@ -1206,6 +1207,25 @@ export default function Home() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+
+          {/* Saved Slots — load template + resume in one tap */}
+          <SavedSlotsBar
+            currentSubject={subject}
+            currentBody={body}
+            currentResumeFile={resumeFile}
+            currentResumeFilename={resumeFilename}
+            onLoad={(payload) => {
+              setSubject(payload.subject);
+              setBody(payload.body);
+              setEmailSaved(true);
+              setResumeFile(payload.resumeFile);
+              setResumeFilename(payload.resumeFilename);
+              setResumeSaved(true);
+              // Skip ahead to recipients — both heavy steps are filled in.
+              setCurrentStep(recipients.length > 0 ? 4 : 3);
+              addLog(`Loaded slot: ${payload.resumeName}`);
+            }}
+          />
 
           {/* Step 1: Resume */}
           {currentStep === 1 && (
