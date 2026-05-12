@@ -42,9 +42,15 @@ export default function TemplatesPage() {
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState("");
 
+  const [needsLogin, setNeedsLogin] = useState(false);
+
   const refresh = async () => {
     try {
       const r = await fetch("/api/jobs/templates", { cache: "no-store" });
+      if (r.status === 401) {
+        setNeedsLogin(true);
+        return;
+      }
       const data = await r.json();
       if (Array.isArray(data.templates)) setTemplates(data.templates);
     } catch (e) { setError(String(e)); }
@@ -148,6 +154,24 @@ export default function TemplatesPage() {
         </button>
       </div>
 
+      {/* Sign-in prompt — shown when /api/jobs/templates returns 401.
+          Mostly happens on a fresh browser / phone that hasn't signed in
+          to the same account yet. Templates are per-account, not per-device. */}
+      {needsLogin ? (
+        <div className="border border-amber-500/40 bg-amber-500/10 rounded-xl p-6 text-center">
+          <h2 className="text-lg font-bold text-amber-200 mb-2">Sign in to see your templates</h2>
+          <p className="text-sm text-amber-100/80 mb-4">
+            Your templates are saved on your account, not on this device. Sign in with the same email you used on your other device to see them here.
+          </p>
+          <Link
+            href={`/login?next=${encodeURIComponent("/templates")}`}
+            className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white px-5 py-3 rounded-lg text-sm font-medium active:scale-[0.98] transition"
+          >
+            Sign in
+          </Link>
+        </div>
+      ) : (
+        <>
       {/* Search */}
       <div className="relative mb-5">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -234,6 +258,8 @@ export default function TemplatesPage() {
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
 
       {/* Editor modal */}
