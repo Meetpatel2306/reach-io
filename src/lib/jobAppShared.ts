@@ -9,6 +9,10 @@ export interface Template {
   roleType: string;
   subject: string;
   body: string;
+  // Optional reminder of which local folder / file holds the resume that
+  // pairs with this template. Pure note for the user — server has no access
+  // to local paths. Used to remind them which PDF to attach when sending.
+  resumePath?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -46,6 +46,7 @@ export async function upsertTemplate(email: string, t: Partial<Template>): Promi
     roleType: t.roleType ?? existing?.roleType ?? "",
     subject: t.subject ?? existing?.subject ?? "",
     body: t.body ?? existing?.body ?? "",
+    resumePath: t.resumePath ?? existing?.resumePath,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -91,6 +92,7 @@ export async function migrateTemplatesIfNeeded(email: string): Promise<number> {
         roleType: def.roleType,
         subject: def.subject,
         body: def.body,
+        resumePath: def.resumePath,
       });
       updated++;
     }

@@ -15,9 +15,10 @@ interface Draft {
   roleType: string;
   subject: string;
   body: string;
+  resumePath: string;
 }
 
-const EMPTY_DRAFT: Draft = { name: "", roleType: "", subject: "", body: "" };
+const EMPTY_DRAFT: Draft = { name: "", roleType: "", subject: "", body: "", resumePath: "" };
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -63,6 +64,7 @@ export default function TemplatesPage() {
           roleType: draft.roleType.trim(),
           subject: draft.subject,
           body: draft.body,
+          resumePath: draft.resumePath.trim() || undefined,
         }),
       });
       const data = await r.json();
@@ -90,6 +92,7 @@ export default function TemplatesPage() {
           roleType: t.roleType,
           subject: t.subject,
           body: t.body,
+          resumePath: t.resumePath,
         }),
       });
       await refresh();
@@ -161,10 +164,15 @@ export default function TemplatesPage() {
                 )}
               </div>
               <p className="text-sm text-slate-300 mb-1 line-clamp-1">{t.subject}</p>
-              <p className="text-xs text-slate-500 line-clamp-3 flex-1 mb-3">{t.body.slice(0, 200)}{t.body.length > 200 ? "…" : ""}</p>
+              <p className="text-xs text-slate-500 line-clamp-3 flex-1 mb-2">{t.body.slice(0, 200)}{t.body.length > 200 ? "…" : ""}</p>
+              {t.resumePath && (
+                <p className="text-[10px] text-amber-300/80 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1 mb-3 truncate" title={t.resumePath}>
+                  📎 Resume folder: <span className="font-mono">{t.resumePath}</span>
+                </p>
+              )}
               <div className="flex gap-1.5 flex-wrap">
                 <button
-                  onClick={() => { setError(""); setDraft({ id: t.id, name: t.name, roleType: t.roleType, subject: t.subject, body: t.body }); }}
+                  onClick={() => { setError(""); setDraft({ id: t.id, name: t.name, roleType: t.roleType, subject: t.subject, body: t.body, resumePath: t.resumePath || "" }); }}
                   className="px-3 py-1.5 rounded bg-violet-500/15 border border-violet-500/30 text-violet-200 text-xs hover:bg-violet-500/25 inline-flex items-center gap-1 active:scale-[0.98] transition"
                 >
                   <Pencil size={12} /> Edit
@@ -244,6 +252,19 @@ export default function TemplatesPage() {
               />
               <p className="text-xs text-slate-500 mt-1">
                 Plain text. Recipient placeholders: <code className="text-violet-300">{"{first_name}"}</code>, <code className="text-violet-300">{"{company}"}</code>, <code className="text-violet-300">{"{role}"}</code> — auto-filled per send if used.
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-400 uppercase tracking-wider">Resume folder / path (optional reminder)</label>
+              <input
+                className="input-field text-base sm:text-sm w-full mt-1 py-3 sm:py-2 font-mono"
+                placeholder="e.g. D:\Users\Meet\Desktop\automation\resume"
+                value={draft.resumePath}
+                onChange={(e) => setDraft({ ...draft, resumePath: e.target.value })}
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Just a note for you — server can&apos;t access local paths. Reminds you which PDF to attach when sending with this template.
               </p>
             </div>
 
