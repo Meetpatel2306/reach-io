@@ -5,8 +5,23 @@
 // First-load auto-migrates any old localStorage slots up to the server.
 
 import { useEffect, useState } from "react";
-import { Star, Plus, Trash2, FileBox, Mail, Loader2, X, Save, Cloud, Check } from "lucide-react";
-import type { Slot } from "@/lib/jobAppShared";
+import { Star, Plus, Trash2, FileBox, Mail, Loader2, X, Save, Cloud, Check, FileText } from "lucide-react";
+import type { Slot, Template } from "@/lib/jobAppShared";
+
+// What we render as a "slot card" — either a real Slot from KV, or a Template
+// that has a baked-in resume (so it can act like a slot).
+interface SlotCard {
+  source: "slot" | "template";
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  resumeName: string;
+  resumeBase64: string;
+  resumeSize: number;
+  // Only present for source === "slot" (used by the delete button)
+  realSlotId?: string;
+}
 
 const LEGACY_KEY = "email-blaster-slots";       // old localStorage key
 const MIGRATION_FLAG = "email-blaster-slots-migrated-v1";
@@ -101,6 +116,7 @@ export function SavedSlotsBar({
   currentSubject, currentBody, currentResumeFile, currentResumeFilename, onLoad,
 }: Props) {
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [templateCards, setTemplateCards] = useState<SlotCard[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -113,9 +129,30 @@ export function SavedSlotsBar({
 
   const refresh = async () => {
     try {
-      const r = await fetch("/api/jobs/slots", { cache: "no-store" });
-      const data = await r.json();
-      if (Array.isArray(data.slots)) setSlots(data.slots);
+      const [slotRes, tplRes] = await Promise.all([
+        fetch("/api/jobs/slots", { cache: "no-store" }),
+        fetch("/api/jobs/templates", { cache: "no-store" }),
+      ]);
+      const slotData = await slotRes.json();
+      const tplData = await tplRes.json();
+      if (Array.isArray(slotData.slots)) setSlots(slotData.slots);
+      if (Array.isArray(tplData.templates)) {
+        // Surface only templates that have a baked-in resume — those can be
+        // used like slots (one tap = template + resume).
+        const usable: SlotCard[] = (tplData.templates as Template[])
+          .filter((t) => t.resumeBase64 && t.resumeName)
+          .map((t) => ({
+            source: "template" as const,
+            id: `tpl:${t.id}`,
+            name: t.name,
+            subject: t.subject,
+            body: t.body,
+            resumeName: t.resumeName!,
+            resumeBase64: t.resumeBase64!,
+            resumeSize: t.resumeSize || 0,
+          }));
+        setTemplateCards(usable);
+      }
     } catch (e) {
       setError(`Could not load slots: ${e}`);
     } finally {
@@ -204,15 +241,14 @@ export function SavedSlotsBar({
     }
   }
 
-  async function handleLoad(slot: Slot) {
-    setError(""); setLoadingId(slot.id);
+  async function handleLoadCard(card: SlotCard) {
+    setError(""); setLoadingId(card.id);
     try {
-      // Resume is optional — if the slot has none, skip the file reconstruction.
-      const hasResume = !!(slot.resumeBase64 && slot.resumeName);
+      const hasResume = !!(card.resumeBase64 && card.resumeName);
       let file: File | null = null;
       let serverFilename = "";
       if (hasResume) {
-        file = base64ToFile(slot.resumeBase64, slot.resumeName);
+        file = base64ToFile(card.resumeBase64, card.resumeName);
         if (file.size > 0) {
           const fd = new FormData();
           fd.append("resume", file);
@@ -226,15 +262,15 @@ export function SavedSlotsBar({
         }
       }
       onLoad({
-        subject: slot.subject,
-        body: slot.body,
+        subject: card.subject,
+        body: card.body,
         resumeFile: file,
         resumeFilename: serverFilename,
-        resumeName: slot.resumeName,
-        resumeBase64: slot.resumeBase64,
+        resumeName: card.resumeName,
+        resumeBase64: card.resumeBase64,
       });
-      setActiveSlotId(slot.id);
-      setActiveSnapshot({ subject: slot.subject, body: slot.body, resumeName: slot.resumeName });
+      setActiveSlotId(card.id);
+      setActiveSnapshot({ subject: card.subject, body: card.body, resumeName: card.resumeName });
     } catch (e) {
       setError(`Load failed: ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -242,11 +278,16 @@ export function SavedSlotsBar({
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(card: SlotCard) {
+    if (card.source === "template") {
+      // Templates are managed on the /templates page — don't delete them here.
+      alert("This is a template, not a slot. Edit or delete it from the Templates page.");
+      return;
+    }
     if (!confirm("Delete this saved slot? (It will be removed from all your devices.)")) return;
     try {
-      await fetch(`/api/jobs/slots/${id}`, { method: "DELETE" });
-      if (id === activeSlotId) {
+      await fetch(`/api/jobs/slots/${card.realSlotId}`, { method: "DELETE" });
+      if (card.id === activeSlotId) {
         setActiveSlotId("");
         setActiveSnapshot(null);
       }
@@ -254,13 +295,30 @@ export function SavedSlotsBar({
     } catch (e) { setError(String(e)); }
   }
 
+  // Merge both sources into a single list for rendering.
+  // Real slots first, then template-derived cards.
+  const cards: SlotCard[] = [
+    ...slots.map<SlotCard>((s) => ({
+      source: "slot",
+      id: s.id,
+      realSlotId: s.id,
+      name: s.name,
+      subject: s.subject,
+      body: s.body,
+      resumeName: s.resumeName || "",
+      resumeBase64: s.resumeBase64 || "",
+      resumeSize: s.resumeSize || 0,
+    })),
+    ...templateCards,
+  ];
+
   return (
     <div className="bg-indigo-500/5 border border-indigo-500/30 rounded-xl p-3 sm:p-4 mb-4">
       <div className="flex items-start sm:items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <Star size={18} className="text-indigo-400" />
           <span className="text-sm sm:text-base font-semibold text-indigo-300">Quick Slots</span>
-          <span className="text-[11px] text-slate-500">({slots.length} saved)</span>
+          <span className="text-[11px] text-slate-500">({cards.length} total · {slots.length} saved + {templateCards.length} from templates)</span>
           <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400/80 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20" title="Slots sync to your account, available on every device">
             <Cloud size={10} /> synced
           </span>
@@ -284,22 +342,25 @@ export function SavedSlotsBar({
 
       {!loaded ? (
         <p className="text-sm text-slate-500 inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading slots…</p>
-      ) : slots.length === 0 ? (
+      ) : cards.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No saved slots yet. Fill in the email + attach a resume, then tap <span className="text-indigo-300">Save current</span> — it bundles both into one slot you can re-load anytime in one tap.
+          No slots yet. Fill in the email + attach a resume, then tap <span className="text-indigo-300">Save current</span>. Templates with a baked-in resume also appear here automatically.
         </p>
       ) : (
         <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-3 sm:-mx-4 px-3 sm:px-4 snap-x snap-mandatory" style={{ scrollbarWidth: "thin" }}>
-          {slots.map((slot, idx) => {
-            const isLoading = loadingId === slot.id;
-            const isActive = slot.id === activeSlotId;
+          {cards.map((card, idx) => {
+            const isLoading = loadingId === card.id;
+            const isActive = card.id === activeSlotId;
+            const fromTemplate = card.source === "template";
             return (
               <div
-                key={slot.id}
+                key={card.id}
                 className={`relative shrink-0 w-64 sm:w-72 snap-start rounded-xl p-3 transition group ${
                   isActive
                     ? "bg-indigo-500/15 border border-indigo-400 ring-2 ring-indigo-400/60 shadow-[0_0_0_1px_rgba(129,140,248,0.4)]"
-                    : "bg-slate-900/50 border border-slate-700/50 hover:border-indigo-500/40"
+                    : fromTemplate
+                      ? "bg-violet-500/5 border border-violet-500/30 hover:border-violet-500/50"
+                      : "bg-slate-900/50 border border-slate-700/50 hover:border-indigo-500/40"
                 }`}
               >
                 {isActive && (
@@ -307,40 +368,51 @@ export function SavedSlotsBar({
                     <Check size={10} /> In use
                   </span>
                 )}
+                {!isActive && fromTemplate && (
+                  <span className="absolute -top-2 left-3 px-1.5 py-0.5 rounded-md bg-violet-500 text-white text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 shadow">
+                    <FileText size={10} /> Template
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={() => handleLoad(slot)}
+                  onClick={() => handleLoadCard(card)}
                   disabled={isLoading}
-                  className="w-full text-left flex items-start gap-3 disabled:opacity-50"
+                  className="w-full text-left flex items-start gap-3 disabled:opacity-50 min-w-0"
                 >
                   <span className={`shrink-0 w-9 h-9 rounded-lg font-bold inline-flex items-center justify-center text-sm border ${
                     isActive
                       ? "bg-indigo-500 border-indigo-400 text-white"
-                      : "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
+                      : fromTemplate
+                        ? "bg-violet-500/20 border-violet-500/40 text-violet-200"
+                        : "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
                   }`}>
                     {isLoading ? <Loader2 size={16} className="animate-spin" /> : `#${idx + 1}`}
                   </span>
-                  <div className="min-w-0 flex-1 pr-7">
-                    <p className={`text-sm font-semibold truncate ${isActive ? "text-indigo-100" : "text-white"}`}>{slot.name}</p>
-                    <p className="text-xs text-slate-400 truncate inline-flex items-center gap-1 mt-0.5">
+                  <div className="min-w-0 flex-1 pr-7 overflow-hidden">
+                    <p className={`text-sm font-semibold truncate ${isActive ? "text-indigo-100" : "text-white"}`}>{card.name}</p>
+                    <div className="flex items-center gap-1 mt-0.5 text-xs text-slate-400 min-w-0">
                       <Mail size={11} className="shrink-0" />
-                      <span className="truncate">{slot.subject || "(no subject)"}</span>
-                    </p>
-                    <p className="text-xs text-slate-500 truncate inline-flex items-center gap-1 mt-0.5">
+                      <span className="truncate min-w-0 flex-1">{card.subject || "(no subject)"}</span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5 text-xs text-slate-500 min-w-0">
                       <FileBox size={11} className="shrink-0" />
-                      <span className="truncate">{slot.resumeName}</span>
-                      <span className="text-slate-600 shrink-0">· {(slot.resumeSize / 1024).toFixed(0)} KB</span>
-                    </p>
+                      <span className="truncate min-w-0 flex-1">{card.resumeName || "no resume"}</span>
+                      {card.resumeSize > 0 && (
+                        <span className="text-slate-600 shrink-0">· {(card.resumeSize / 1024).toFixed(0)} KB</span>
+                      )}
+                    </div>
                   </div>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(slot.id)}
-                  className="absolute top-2 right-2 p-1.5 rounded-md text-red-400/70 hover:text-red-400 hover:bg-red-500/10 active:scale-95 transition"
-                  aria-label={`Delete ${slot.name}`}
-                >
-                  <Trash2 size={14} />
-                </button>
+                {!fromTemplate && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(card)}
+                    className="absolute top-2 right-2 p-1.5 rounded-md text-red-400/70 hover:text-red-400 hover:bg-red-500/10 active:scale-95 transition"
+                    aria-label={`Delete ${card.name}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             );
           })}

@@ -771,15 +771,6 @@ export default function Home() {
           >
             <FileText size={18} />
           </Link>
-          {authUser && (
-            <button
-              onClick={handleLogout}
-              className="p-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:border-red-500/50 transition-all"
-              title="Logout"
-            >
-              <LogOut size={18} />
-            </button>
-          )}
           <Link
             href="/guide"
             data-tour="guide"
