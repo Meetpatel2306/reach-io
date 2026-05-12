@@ -289,14 +289,14 @@ export function SavedSlotsBar({
           No saved slots yet. Fill in the email + attach a resume, then tap <span className="text-indigo-300">Save current</span> — it bundles both into one slot you can re-load anytime in one tap.
         </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-3 sm:-mx-4 px-3 sm:px-4 snap-x snap-mandatory" style={{ scrollbarWidth: "thin" }}>
           {slots.map((slot, idx) => {
             const isLoading = loadingId === slot.id;
             const isActive = slot.id === activeSlotId;
             return (
               <div
                 key={slot.id}
-                className={`relative rounded-xl p-3 transition group ${
+                className={`relative shrink-0 w-64 sm:w-72 snap-start rounded-xl p-3 transition group ${
                   isActive
                     ? "bg-indigo-500/15 border border-indigo-400 ring-2 ring-indigo-400/60 shadow-[0_0_0_1px_rgba(129,140,248,0.4)]"
                     : "bg-slate-900/50 border border-slate-700/50 hover:border-indigo-500/40"

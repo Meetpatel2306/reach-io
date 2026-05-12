@@ -4,9 +4,9 @@
 // uncluttered view. Replaces the cramped inline TemplatePicker for editing
 // (the picker still exists on the main page, but only for "load this" use).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileText, Plus, Pencil, Trash2, Save, X, Search, Copy, Check } from "lucide-react";
+import { ArrowLeft, FileText, Plus, Pencil, Trash2, Save, X, Search, Copy, Check, Upload, Paperclip } from "lucide-react";
 import type { Template } from "@/lib/jobAppShared";
 
 interface Draft {
@@ -16,9 +16,22 @@ interface Draft {
   subject: string;
   body: string;
   resumePath: string;
+  // Baked resume — fields are present only when one is attached.
+  resumeName?: string;
+  resumeBase64?: string;
+  resumeSize?: number;
 }
 
 const EMPTY_DRAFT: Draft = { name: "", roleType: "", subject: "", body: "", resumePath: "" };
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -65,6 +78,9 @@ export default function TemplatesPage() {
           subject: draft.subject,
           body: draft.body,
           resumePath: draft.resumePath.trim() || undefined,
+          resumeName: draft.resumeName,
+          resumeBase64: draft.resumeBase64,
+          resumeSize: draft.resumeSize,
         }),
       });
       const data = await r.json();
@@ -165,14 +181,33 @@ export default function TemplatesPage() {
               </div>
               <p className="text-sm text-slate-300 mb-1 line-clamp-1">{t.subject}</p>
               <p className="text-xs text-slate-500 line-clamp-3 flex-1 mb-2">{t.body.slice(0, 200)}{t.body.length > 200 ? "…" : ""}</p>
-              {t.resumePath && (
+              {t.resumeName && t.resumeBase64 ? (
+                <p className="text-[10px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/30 rounded px-2 py-1 mb-3 truncate" title={`${t.resumeName} · ${((t.resumeSize || 0) / 1024).toFixed(0)} KB`}>
+                  <Paperclip size={10} className="inline mr-1" />
+                  Resume attached: <span className="font-mono">{t.resumeName}</span>
+                  <span className="text-emerald-300/60"> · {((t.resumeSize || 0) / 1024).toFixed(0)} KB</span>
+                </p>
+              ) : t.resumePath ? (
                 <p className="text-[10px] text-amber-300/80 bg-amber-500/5 border border-amber-500/20 rounded px-2 py-1 mb-3 truncate" title={t.resumePath}>
                   📎 Resume folder: <span className="font-mono">{t.resumePath}</span>
                 </p>
-              )}
+              ) : null}
               <div className="flex gap-1.5 flex-wrap">
                 <button
-                  onClick={() => { setError(""); setDraft({ id: t.id, name: t.name, roleType: t.roleType, subject: t.subject, body: t.body, resumePath: t.resumePath || "" }); }}
+                  onClick={() => {
+                    setError("");
+                    setDraft({
+                      id: t.id,
+                      name: t.name,
+                      roleType: t.roleType,
+                      subject: t.subject,
+                      body: t.body,
+                      resumePath: t.resumePath || "",
+                      resumeName: t.resumeName,
+                      resumeBase64: t.resumeBase64,
+                      resumeSize: t.resumeSize,
+                    });
+                  }}
                   className="px-3 py-1.5 rounded bg-violet-500/15 border border-violet-500/30 text-violet-200 text-xs hover:bg-violet-500/25 inline-flex items-center gap-1 active:scale-[0.98] transition"
                 >
                   <Pencil size={12} /> Edit
@@ -264,9 +299,12 @@ export default function TemplatesPage() {
                 onChange={(e) => setDraft({ ...draft, resumePath: e.target.value })}
               />
               <p className="text-xs text-slate-500 mt-1">
-                Just a note for you — server can&apos;t access local paths. Reminds you which PDF to attach when sending with this template.
+                Just a note for you — server can&apos;t access local paths.
               </p>
             </div>
+
+            <ResumeUploadField draft={draft} setDraft={setDraft} />
+
 
             {error && <p className="text-red-400 text-sm">{error}</p>}
 
@@ -283,6 +321,101 @@ export default function TemplatesPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---- Resume upload field (used inside the editor modal) ----
+function ResumeUploadField({
+  draft,
+  setDraft,
+}: {
+  draft: Draft;
+  setDraft: (d: Draft) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleFile(file: File | null | undefined) {
+    if (!file) return;
+    setError(""); setBusy(true);
+    try {
+      const b64 = await fileToBase64(file);
+      setDraft({
+        ...draft,
+        resumeName: file.name,
+        resumeBase64: b64,
+        resumeSize: file.size,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function clearResume() {
+    setDraft({ ...draft, resumeName: undefined, resumeBase64: undefined, resumeSize: undefined });
+  }
+
+  return (
+    <div>
+      <label className="text-xs text-slate-400 uppercase tracking-wider">
+        Attach a resume (optional — saved with this template)
+      </label>
+
+      {draft.resumeName && draft.resumeBase64 ? (
+        <div className="mt-1 flex items-start gap-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/30">
+          <Paperclip size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-emerald-200 truncate">{draft.resumeName}</p>
+            <p className="text-xs text-emerald-300/70">
+              {((draft.resumeSize || 0) / 1024).toFixed(0)} KB · attached to this template
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="px-2 py-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-xs hover:bg-emerald-500/25 inline-flex items-center gap-1"
+          >
+            <Upload size={12} /> Replace
+          </button>
+          <button
+            type="button"
+            onClick={clearResume}
+            className="text-red-400/80 hover:text-red-400 p-1"
+            aria-label="Remove resume"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      ) : (
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="w-full sm:w-auto px-4 py-3 sm:py-2.5 rounded-lg border border-dashed border-slate-600 hover:border-emerald-500/50 bg-slate-900/40 hover:bg-emerald-500/5 text-slate-300 text-sm inline-flex items-center justify-center gap-2 active:scale-[0.98] transition disabled:opacity-50"
+          >
+            <Upload size={14} />
+            {busy ? "Reading file..." : "Upload resume (PDF/DOC)"}
+          </button>
+          <p className="text-xs text-slate-500 mt-1">
+            Optional — when set, the resume auto-attaches every time this template is loaded into the compose step.
+          </p>
+        </div>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf,.doc,.docx"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
     </div>
   );
 }

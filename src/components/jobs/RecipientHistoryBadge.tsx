@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Clock, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
-import { loadHistory, type SendBatch } from "@/lib/history";
+import { loadHistory, HISTORY_UPDATED_EVENT, type SendBatch } from "@/lib/history";
 
 interface Match {
   timestamp: string;
@@ -53,7 +53,26 @@ function timeAgo(iso: string): string {
 export function useRecipientHistoryIndex() {
   const [index, setIndex] = useState<Map<string, Match[]>>(() => new Map());
   useEffect(() => {
-    setIndex(buildIndex(loadHistory()));
+    const refresh = () => setIndex(buildIndex(loadHistory()));
+    refresh();
+    // Re-build whenever a send completes (custom event from saveToHistory),
+    // or when the history key changes from another tab (storage event), or
+    // when the user returns to this tab (visibilitychange / focus).
+    const onUpdate = () => refresh();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === "email-blaster-history") refresh();
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    window.addEventListener(HISTORY_UPDATED_EVENT, onUpdate);
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onUpdate);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener(HISTORY_UPDATED_EVENT, onUpdate);
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onUpdate);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
   return index;
 }

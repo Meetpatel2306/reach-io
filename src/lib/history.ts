@@ -30,6 +30,11 @@ export function loadHistory(): SendBatch[] {
   return [];
 }
 
+// Custom event name — any component reading send history can listen to this
+// and re-load when a new batch lands. Used by useRecipientHistoryIndex so
+// the "already contacted" badge updates the instant a send completes.
+export const HISTORY_UPDATED_EVENT = "eb-history-updated";
+
 export function saveToHistory(batch: SendBatch) {
   const history = loadHistory();
   history.unshift(batch);
@@ -38,10 +43,25 @@ export function saveToHistory(batch: SendBatch) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   } catch {}
+  // Notify listeners (badge index, banners, etc.)
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(HISTORY_UPDATED_EVENT));
+    }
+  } catch {}
+}
+
+function dispatchHistoryUpdate() {
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(HISTORY_UPDATED_EVENT));
+    }
+  } catch {}
 }
 
 export function clearHistory() {
   try { localStorage.removeItem(HISTORY_KEY); } catch {}
+  dispatchHistoryUpdate();
 }
 
 export function deleteBatch(id: string) {
@@ -49,4 +69,5 @@ export function deleteBatch(id: string) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
   } catch {}
+  dispatchHistoryUpdate();
 }

@@ -13,6 +13,11 @@ export interface Template {
   // pairs with this template. Pure note for the user — server has no access
   // to local paths. Used to remind them which PDF to attach when sending.
   resumePath?: string;
+  // Optional baked-in resume — upload once, lives with the template.
+  // When the template is loaded into the compose step, the resume auto-attaches.
+  resumeName?: string;
+  resumeBase64?: string; // dataURL
+  resumeSize?: number;
   createdAt: string;
   updatedAt: string;
 }

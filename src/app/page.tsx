@@ -294,11 +294,25 @@ export default function Home() {
     }).catch(() => {}).finally(() => setAuthReady(true));
   }, []);
 
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    // Clear ALL per-user data so the next login on this browser starts clean
-    clearUserData();
-    window.location.href = "/login";
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // Opens the confirm dialog; actual sign-out happens in confirmLogout.
+  const handleLogout = () => {
+    setShowUserMenu(false);
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      // Clear ALL per-user data so the next login on this browser starts clean
+      clearUserData();
+      window.location.href = "/login";
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const handleSignOut = () => {
@@ -757,6 +771,15 @@ export default function Home() {
           >
             <FileText size={18} />
           </Link>
+          {authUser && (
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20 hover:border-red-500/50 transition-all"
+              title="Logout"
+            >
+              <LogOut size={18} />
+            </button>
+          )}
           <Link
             href="/guide"
             data-tour="guide"
@@ -1406,7 +1429,34 @@ export default function Home() {
                   <TemplatePicker
                     subject={subject}
                     body={body}
-                    onLoad={(s, b) => { setSubject(s); setBody(b); addLog("Template loaded"); }}
+                    onLoad={async (p) => {
+                      setSubject(p.subject);
+                      setBody(p.body);
+                      addLog("Template loaded");
+                      // If the template has a baked-in resume, decode and attach it
+                      // so the user doesn't have to re-upload manually.
+                      if (p.resumeName && p.resumeBase64) {
+                        try {
+                          const [meta, data] = p.resumeBase64.split(",");
+                          const mime = meta.match(/:(.*?);/)?.[1] || "application/pdf";
+                          const binary = atob(data);
+                          const bytes = new Uint8Array(binary.length);
+                          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                          const file = new File([bytes], p.resumeName, { type: mime });
+                          // Re-upload to /tmp so /api/send-email can use it via resumeFilename
+                          const fd = new FormData();
+                          fd.append("resume", file);
+                          const res = await fetch("/api/upload-resume", { method: "POST", body: fd });
+                          const dataRes = await res.json().catch(() => ({}));
+                          setResumeFile(file);
+                          if (dataRes.filename) setResumeFilename(dataRes.filename);
+                          setResumeSaved(true);
+                          addLog(`Resume auto-attached: ${p.resumeName}`);
+                        } catch {
+                          addLog("Failed to auto-attach resume — please upload manually.");
+                        }
+                      }
+                    }}
                   />
                   <div className="space-y-4">
                     <div>
@@ -1708,6 +1758,44 @@ export default function Home() {
 
       {/* Interactive Spotlight Tour */}
       {/* Delete Account Confirmation Modal */}
+      {showLogoutConfirm && authUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
+          <div className="glass-card max-w-sm w-full !border-red-500/30">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-orange-500 mb-3 shadow-lg shadow-red-500/30">
+                <LogOut size={22} className="text-white" />
+              </div>
+              <h2 className="text-lg font-bold text-white">Sign out?</h2>
+              <p className="text-sm text-slate-400 mt-1">
+                Signed in as <span className="text-violet-300 font-mono">{authUser.email}</span>
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-400 bg-slate-800/40 border border-slate-700/40 rounded-lg p-3 mb-4">
+              Your saved templates, slots, and history stay on your account. This browser&apos;s draft email and OAuth session will be cleared.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                disabled={loggingOut}
+                className="w-full sm:flex-1 px-4 py-3 sm:py-2.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-sm hover:bg-slate-700 active:scale-[0.98] transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                disabled={loggingOut}
+                className="w-full sm:flex-1 px-4 py-3 sm:py-2.5 rounded-lg bg-red-500/15 border border-red-500/40 text-red-200 text-sm font-medium hover:bg-red-500/25 inline-flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-50"
+              >
+                {loggingOut ? <Loader2 size={16} className="animate-spin" /> : <LogOut size={16} />}
+                {loggingOut ? "Signing out..." : "Yes, sign out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteAccount && authUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(10px)" }}>
           <div className="glass-card max-w-md w-full !border-red-500/30">

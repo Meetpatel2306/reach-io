@@ -9,10 +9,20 @@ import Link from "next/link";
 import { FileText, ExternalLink } from "lucide-react";
 import type { Template } from "@/lib/jobAppShared";
 
+export interface TemplateLoadPayload {
+  subject: string;
+  body: string;
+  // If the template has a baked-in resume, these come through too — the
+  // compose page can choose to auto-attach it.
+  resumeName?: string;
+  resumeBase64?: string;
+  resumeSize?: number;
+}
+
 interface Props {
   subject: string;
   body: string;
-  onLoad: (subject: string, body: string) => void;
+  onLoad: (payload: TemplateLoadPayload) => void;
 }
 
 export function TemplatePicker({ onLoad }: Props) {
@@ -32,7 +42,15 @@ export function TemplatePicker({ onLoad }: Props) {
     setPicked(id);
     if (!id) return;
     const t = templates.find((x) => x.id === id);
-    if (t) onLoad(t.subject, t.body);
+    if (t) {
+      onLoad({
+        subject: t.subject,
+        body: t.body,
+        resumeName: t.resumeName,
+        resumeBase64: t.resumeBase64,
+        resumeSize: t.resumeSize,
+      });
+    }
   }
 
   return (

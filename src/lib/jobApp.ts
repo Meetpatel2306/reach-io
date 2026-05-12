@@ -47,6 +47,9 @@ export async function upsertTemplate(email: string, t: Partial<Template>): Promi
     subject: t.subject ?? existing?.subject ?? "",
     body: t.body ?? existing?.body ?? "",
     resumePath: t.resumePath ?? existing?.resumePath,
+    resumeName: t.resumeName ?? existing?.resumeName,
+    resumeBase64: t.resumeBase64 ?? existing?.resumeBase64,
+    resumeSize: t.resumeSize ?? existing?.resumeSize,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
