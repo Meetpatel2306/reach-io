@@ -121,29 +121,39 @@ GitHub: https://github.com/Meetpatel2306
   },
 ];
 
-// ---------- Upstash REST helpers ----------
-async function kvGet(key) {
-  const url = `${KV_URL.replace(/\/+$/, "")}/get/${encodeURIComponent(key)}`;
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${KV_TOKEN}` } });
-  if (!r.ok) throw new Error(`KV GET ${key}: ${r.status} ${await r.text()}`);
-  const data = await r.json();
-  if (data.result == null) return null;
-  try {
-    return typeof data.result === "string" ? JSON.parse(data.result) : data.result;
-  } catch {
-    return data.result;
+// ---------- Upstash REST helpers (command-style endpoint) ----------
+// Robust against double-stringification: if the first JSON.parse yields a
+// string that itself looks like JSON, parse it again.
+function deepParse(raw) {
+  let v = raw;
+  for (let i = 0; i < 3; i++) {
+    if (typeof v !== "string") return v;
+    const t = v.trim();
+    if (!t.startsWith("{") && !t.startsWith("[") && !t.startsWith('"')) return v;
+    try { v = JSON.parse(v); } catch { return v; }
   }
+  return v;
+}
+
+async function kvCommand(command) {
+  const r = await fetch(KV_URL.replace(/\/+$/, ""), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(command),
+  });
+  if (!r.ok) throw new Error(`KV ${command[0]} ${command[1]}: ${r.status} ${await r.text()}`);
+  return await r.json();
+}
+
+async function kvGet(key) {
+  const data = await kvCommand(["GET", key]);
+  if (data.result == null) return null;
+  return deepParse(data.result);
 }
 
 async function kvSet(key, value) {
-  const url = `${KV_URL.replace(/\/+$/, "")}/set/${encodeURIComponent(key)}`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${KV_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(JSON.stringify(value)),
-  });
-  if (!r.ok) throw new Error(`KV SET ${key}: ${r.status} ${await r.text()}`);
-  return await r.json();
+  // Upstash command-style SET expects the value as a single JSON string.
+  return await kvCommand(["SET", key, JSON.stringify(value)]);
 }
 
 function newId() {
@@ -157,9 +167,25 @@ function nowIso() {
 // ---------- main ----------
 async function main() {
   console.log(`▶ Loading templates for ${USER_EMAIL}...`);
-  const existing = (await kvGet(KEY)) || [];
+  let existing = (await kvGet(KEY)) || [];
   if (!Array.isArray(existing)) {
-    throw new Error(`Unexpected templates shape: ${typeof existing}`);
+    // One more parse attempt — the previous bad script ran one JSON.stringify too many.
+    if (typeof existing === "string") {
+      try {
+        const parsed = JSON.parse(existing);
+        if (Array.isArray(parsed)) {
+          console.log("  (Recovered double-stringified data from previous bad write — rewriting cleanly.)");
+          existing = parsed;
+          await kvSet(KEY, existing); // normalise it back
+        } else {
+          throw new Error(`Stored value is a string but not a JSON array: ${existing.slice(0, 80)}…`);
+        }
+      } catch (e) {
+        throw new Error(`Unexpected templates shape (string, unrecoverable): ${e instanceof Error ? e.message : e}`);
+      }
+    } else {
+      throw new Error(`Unexpected templates shape: ${typeof existing}`);
+    }
   }
   console.log(`  ${existing.length} template(s) already present:`);
   for (const t of existing) console.log(`    • ${t.name}`);
