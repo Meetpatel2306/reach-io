@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, CheckCircle2, Send, Loader2 } from "lucide-react";
+import { Bell, CheckCircle2, Send, Loader2, MailCheck, RefreshCw } from "lucide-react";
 import type { FollowUpEntry, Template } from "@/lib/jobAppShared";
 import { loadOAuth, getValidAccessToken } from "@/lib/oauth";
 
@@ -25,6 +25,8 @@ export function FollowUpsPanel() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [collapsed, setCollapsed] = useState(false);
+  const [checkingReplies, setCheckingReplies] = useState(false);
+  const [checkMsg, setCheckMsg] = useState("");
 
   const refresh = async () => {
     try {
@@ -49,6 +51,34 @@ export function FollowUpsPanel() {
   async function handleResolve(id: string) {
     await fetch(`/api/jobs/followups/${id}/done`, { method: "POST" });
     refresh();
+  }
+
+  async function handleCheckReplies() {
+    setError(""); setCheckMsg("");
+    const oauth = loadOAuth();
+    const token = oauth ? await getValidAccessToken() : null;
+    if (!token) {
+      setError("Sign in with Google to enable reply detection (Gmail readonly scope required).");
+      return;
+    }
+    setCheckingReplies(true);
+    try {
+      const res = await fetch("/api/jobs/check-replies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oauthAccessToken: token, daysThreshold: days }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Reply check failed");
+      }
+      setCheckMsg(`Checked ${data.checked} · ${data.repliedCount} replied · ${data.pendingCount} still pending.`);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCheckingReplies(false);
+    }
   }
 
   async function handleSendFollowUp(it: FollowUpEntry) {
@@ -141,8 +171,27 @@ export function FollowUpsPanel() {
       </button>
 
       {!collapsed && (
-        <div className="border-t border-amber-500/20 divide-y divide-amber-500/10">
+        <div className="border-t border-amber-500/20">
+          <div className="px-4 py-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-amber-500/5">
+            <button
+              onClick={handleCheckReplies}
+              disabled={checkingReplies}
+              className="w-full sm:w-auto px-3 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-sm hover:bg-emerald-500/25 inline-flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-50"
+              title="Check your Gmail inbox for replies from each pending recipient"
+            >
+              {checkingReplies ? <Loader2 size={14} className="animate-spin" /> : <MailCheck size={14} />}
+              {checkingReplies ? "Checking Gmail..." : "Check Gmail for replies"}
+            </button>
+            <button
+              onClick={refresh}
+              className="w-full sm:w-auto px-3 py-2 rounded-lg border border-slate-700 bg-slate-800/50 text-slate-300 text-sm hover:bg-slate-700 inline-flex items-center justify-center gap-1.5 active:scale-[0.98] transition"
+            >
+              <RefreshCw size={14} /> Refresh
+            </button>
+            {checkMsg && <p className="text-xs text-emerald-300">{checkMsg}</p>}
+          </div>
           {error && <p className="px-4 py-2 text-sm text-red-400">{error}</p>}
+          <div className="divide-y divide-amber-500/10">
           {items.map((it) => (
             <div key={it.id} className="p-3 sm:p-4 space-y-3">
               <div className="min-w-0">
@@ -175,6 +224,7 @@ export function FollowUpsPanel() {
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>

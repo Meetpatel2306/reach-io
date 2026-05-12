@@ -17,6 +17,7 @@ import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
+import { RecipientHistoryBadge, useRecipientHistoryIndex } from "@/components/jobs/RecipientHistoryBadge";
 
 interface Recipient {
   name: string;
@@ -156,6 +157,9 @@ export default function Home() {
   const [isIOS, setIsIOS] = useState(false);
   const [showIOSInstall, setShowIOSInstall] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Per-recipient history lookup (loads localStorage history once and indexes by email)
+  const recipientHistoryIndex = useRecipientHistoryIndex();
 
   // Update detection
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -747,6 +751,13 @@ export default function Home() {
             </div>
           )}
           <Link
+            href="/templates"
+            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
+            title="Templates"
+          >
+            <FileText size={18} />
+          </Link>
+          <Link
             href="/guide"
             data-tour="guide"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
@@ -1253,20 +1264,25 @@ export default function Home() {
               setSubject(payload.subject);
               setBody(payload.body);
               setEmailSaved(true);
-              setResumeFile(payload.resumeFile);
-              setResumeFilename(payload.resumeFilename);
-              setResumeSaved(true);
-              // Snapshot the slot's raw resume bytes so handleSend can rebuild
-              // the File fresh at send time — guarantees the attachment.
-              slotResumeRef.current = {
-                base64: payload.resumeBase64,
-                name: payload.resumeName,
-                subject: payload.subject,
-                body: payload.body,
-              };
-              // Skip ahead to recipients — both heavy steps are filled in.
-              setCurrentStep(recipients.length > 0 ? 4 : 3);
-              addLog(`Loaded slot: ${payload.resumeName}`);
+              // Resume is optional — attach if the slot has one, otherwise leave step 1 untouched.
+              if (payload.resumeFile && payload.resumeBase64) {
+                setResumeFile(payload.resumeFile);
+                setResumeFilename(payload.resumeFilename);
+                setResumeSaved(true);
+                slotResumeRef.current = {
+                  base64: payload.resumeBase64,
+                  name: payload.resumeName,
+                  subject: payload.subject,
+                  body: payload.body,
+                };
+                setCurrentStep(recipients.length > 0 ? 4 : 3);
+                addLog(`Loaded slot with resume: ${payload.resumeName}`);
+              } else {
+                // Clear any stale slot-resume snapshot so we don't accidentally attach an old PDF.
+                slotResumeRef.current = null;
+                addLog("Loaded template-only slot (no resume).");
+                setCurrentStep(resumeSaved ? (recipients.length > 0 ? 4 : 3) : 1);
+              }
             }}
           />
 
@@ -1440,6 +1456,58 @@ export default function Home() {
               <div className="mb-4">
                 <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Manual Entry</label>
                 <textarea className="input-field" rows={3} placeholder={"hr@company.com\nJohn <john@company.com>"} value={manualEmails} onChange={(e) => setManualEmails(e.target.value)} />
+
+                {/* Live history preview — as you type emails here, we check
+                    your local send history and flag the ones you've already
+                    contacted before. Nothing is added to recipients until
+                    you press Add — this is just a preview. */}
+                {(() => {
+                  if (!manualEmails.trim()) return null;
+                  const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+                  const parsed: { name: string; email: string }[] = [];
+                  for (const line of manualEmails.split("\n").map((l) => l.trim()).filter(Boolean)) {
+                    const m = line.match(/^(.+?)\s*<(.+?)>$/);
+                    if (m && isValidEmail(m[2].trim())) parsed.push({ name: m[1].trim(), email: m[2].trim() });
+                    else if (isValidEmail(line)) parsed.push({ name: "", email: line });
+                  }
+                  if (parsed.length === 0) return null;
+                  const seenBefore = parsed.filter((p) => (recipientHistoryIndex.get(p.email.toLowerCase()) || []).length > 0);
+                  return (
+                    <div className="mt-2 border border-slate-700/40 rounded-lg bg-slate-900/30 overflow-hidden">
+                      <div className="px-3 py-2 text-xs text-slate-400 border-b border-slate-700/30 flex items-center justify-between flex-wrap gap-1">
+                        <span>Preview · {parsed.length} email{parsed.length === 1 ? "" : "s"} will be added</span>
+                        {seenBefore.length > 0 && (
+                          <span className="text-amber-300">⚠ {seenBefore.length} already contacted before</span>
+                        )}
+                      </div>
+                      <ul className="max-h-40 overflow-y-auto divide-y divide-slate-800/50">
+                        {parsed.map((p, i) => {
+                          const matches = recipientHistoryIndex.get(p.email.toLowerCase()) || [];
+                          const last = matches[0];
+                          return (
+                            <li
+                              key={i}
+                              className={`px-3 py-1.5 text-xs flex items-center justify-between gap-2 ${
+                                matches.length > 0 ? "bg-amber-500/5" : ""
+                              }`}
+                            >
+                              <span className="min-w-0 truncate">
+                                {p.name && <span className="text-slate-400">{p.name} — </span>}
+                                <span className="text-violet-300">{p.email}</span>
+                              </span>
+                              {matches.length > 0 ? (
+                                <RecipientHistoryBadge email={p.email} index={recipientHistoryIndex} compact />
+                              ) : (
+                                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 whitespace-nowrap">NEW</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })()}
+
                 <button onClick={parseManualEmails} className="btn-primary text-sm mt-2 flex items-center gap-1.5">
                   <Users size={14} />Add
                 </button>
@@ -1447,24 +1515,64 @@ export default function Home() {
 
               {recipients.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="badge badge-info flex items-center gap-1"><Users size={12} />{recipients.length}</span>
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge badge-info flex items-center gap-1"><Users size={12} />{recipients.length}</span>
+                      {(() => {
+                        const seenBefore = recipients.filter((r) => (recipientHistoryIndex.get(r.email.toLowerCase()) || []).length > 0).length;
+                        if (seenBefore === 0) return null;
+                        return (
+                          <span className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-0.5">
+                            {seenBefore} already contacted before
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <button onClick={() => { setRecipients([]); addLog("Cleared"); }} className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1">
                       <Trash2 size={12} />Clear
                     </button>
                   </div>
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {recipients.map((r, i) => (
-                      <div key={i} className="flex items-center justify-between bg-slate-800/30 rounded-lg px-3 py-1.5 text-sm border border-slate-700/20">
-                        <span>
-                          {r.name && <span className="text-slate-400">{r.name} — </span>}
-                          <span className="text-violet-300">{r.email}</span>
-                        </span>
-                        <button onClick={() => setRecipients((prev) => prev.filter((_, idx) => idx !== i))} className="text-red-400/60 hover:text-red-400">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
+                  <div className="max-h-64 overflow-y-auto space-y-1.5">
+                    {recipients.map((r, i) => {
+                      const matches = recipientHistoryIndex.get(r.email.toLowerCase()) || [];
+                      return (
+                        <div
+                          key={i}
+                          className={`rounded-lg px-3 py-2 text-sm border ${
+                            matches.length > 0
+                              ? "bg-amber-500/5 border-amber-500/20"
+                              : "bg-slate-800/30 border-slate-700/20"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex-1 min-w-0 truncate">
+                              {r.name && <span className="text-slate-400">{r.name} — </span>}
+                              <span className="text-violet-300">{r.email}</span>
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {matches.length > 0 && (
+                                <RecipientHistoryBadge
+                                  email={r.email}
+                                  index={recipientHistoryIndex}
+                                  compact
+                                />
+                              )}
+                              <button
+                                onClick={() => setRecipients((prev) => prev.filter((_, idx) => idx !== i))}
+                                className="text-red-400/60 hover:text-red-400"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          {matches.length > 0 && (
+                            <div className="mt-1.5">
+                              <RecipientHistoryBadge email={r.email} index={recipientHistoryIndex} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

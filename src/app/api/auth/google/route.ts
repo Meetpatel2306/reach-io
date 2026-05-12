@@ -14,6 +14,8 @@ export async function GET(req: Request) {
 
   const scope = [
     "https://www.googleapis.com/auth/gmail.send",
+    // Read-only Gmail access — used to detect replies for follow-up tracking.
+    "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
   ].join(" ");
