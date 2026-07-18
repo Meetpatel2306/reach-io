@@ -10,7 +10,7 @@ export default function Page() {
       adapter={authAdapter}
       brand={
         <>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/30">
             <Send size={20} className="text-white" />
           </div>
           <span className="text-2xl font-extrabold text-white">Reach.io</span>
