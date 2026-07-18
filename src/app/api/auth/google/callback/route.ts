@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { saveGoogle } from "@/lib/settings";
 
-// Handles OAuth callback: exchanges code for tokens, then redirects to app with tokens
+// Handles the OAuth callback: exchanges the code for tokens and stores the
+// refresh token on the logged-in user's account (encrypted, server-side) so the
+// Google connection syncs across devices and survives browser-storage eviction.
+// The client never sees the tokens — the send route mints access tokens itself.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
@@ -17,6 +22,12 @@ export async function GET(req: Request) {
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(`${url.origin}/?oauth_error=not_configured`);
+  }
+
+  // Must be logged into the app so we know which account to attach Google to.
+  const session = await getSession();
+  if (!session.email) {
+    return NextResponse.redirect(`${url.origin}/login?from=${encodeURIComponent("/")}`);
   }
 
   const redirectUri = `${url.origin}/api/auth/google/callback`;
@@ -43,29 +54,26 @@ export async function GET(req: Request) {
     const tokens = await tokenRes.json();
     // tokens = { access_token, refresh_token, expires_in, token_type, scope, id_token }
 
-    // Verify gmail.send scope was granted (Google may silently drop it if not registered in consent screen)
+    // Verify gmail.send scope was granted (Google may silently drop it if not
+    // registered in the consent screen).
     const grantedScopes = (tokens.scope || "").split(" ");
     if (!grantedScopes.includes("https://www.googleapis.com/auth/gmail.send")) {
       return NextResponse.redirect(`${url.origin}/?oauth_error=gmail_scope_not_granted`);
     }
 
-    // Get user email from userinfo
+    // Get the Google account email/name from userinfo.
     const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     const userInfo = await userInfoRes.json();
 
-    // Pass tokens via URL fragment (#) so they're not sent to server logs
-    // Client picks them up from hash and stores in localStorage
-    const fragment = new URLSearchParams({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token || "",
-      expires_in: String(tokens.expires_in || 3600),
+    await saveGoogle(session.email, {
       email: userInfo.email || "",
       name: userInfo.name || "",
+      refreshToken: tokens.refresh_token || "",
     });
 
-    return NextResponse.redirect(`${url.origin}/#oauth=${encodeURIComponent(fragment.toString())}`);
+    return NextResponse.redirect(`${url.origin}/?google=connected`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "unknown";
     return NextResponse.redirect(`${url.origin}/?oauth_error=${encodeURIComponent(msg)}`);

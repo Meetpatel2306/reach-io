@@ -358,7 +358,7 @@ export default function AdminPage() {
 
       {/* Action message */}
       {actionMsg && (
-        <div className={`mb-4 p-3 rounded-lg text-sm flex items-center justify-between ${actionMsg.includes("Deleted") || actionMsg.includes("reset") ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300" : "bg-red-500/10 border border-red-500/30 text-red-300"}`}>
+        <div className={`mb-4 p-3 rounded-lg text-sm flex items-center justify-between ${/fail|error|not |invalid|denied|unable/i.test(actionMsg) ? "bg-red-500/10 border border-red-500/30 text-red-300" : "bg-emerald-500/10 border border-emerald-500/30 text-emerald-300"}`}>
           <span>{actionMsg}</span>
           <button onClick={() => setActionMsg("")} className="opacity-60 hover:opacity-100"><X size={14} /></button>
         </div>

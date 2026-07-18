@@ -316,19 +316,6 @@ export default function TemplatesPage() {
               </p>
             </div>
 
-            <div>
-              <label className="text-xs text-slate-400 uppercase tracking-wider">Resume folder / path (optional reminder)</label>
-              <input
-                className="input-field text-base sm:text-sm w-full mt-1 py-3 sm:py-2 font-mono"
-                placeholder="e.g. D:\Users\Meet\Desktop\automation\resume"
-                value={draft.resumePath}
-                onChange={(e) => setDraft({ ...draft, resumePath: e.target.value })}
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                Just a note for you — server can&apos;t access local paths.
-              </p>
-            </div>
-
             <ResumeUploadField draft={draft} setDraft={setDraft} />
 
 

@@ -8,7 +8,7 @@ import {
   Filter, Calendar, BarChart3, AlertCircle, Layers,
   ArrowUpDown, User, Hash, RefreshCw, AlertOctagon
 } from "lucide-react";
-import { loadHistory, clearHistory, deleteBatch } from "@/lib/history";
+import { loadHistory, clearHistory, deleteBatch, hydrateHistoryFromServer } from "@/lib/history";
 import type { SendBatch, EmailResult } from "@/lib/history";
 import { FollowUpsPanel } from "@/components/jobs/FollowUpsPanel";
 
@@ -78,8 +78,13 @@ export default function HistoryPage() {
   const [clearedDismissed, setClearedDismissed] = useState(false);
 
   useEffect(() => {
+    // Show the local cache instantly, then refresh from the server so history is
+    // the same on every device you log in from.
     setHistory(loadHistory());
     setLoaded(true);
+    hydrateHistoryFromServer().then((batches) => {
+      if (batches) setHistory(batches);
+    });
     // Check if admin recently wiped data
     fetch("/api/data-cleared-at").then((r) => r.json()).then((data) => {
       if (data.event) {

@@ -3,19 +3,9 @@
 import { useEffect, useState } from "react";
 import { Bell, CheckCircle2, Send, Loader2, MailCheck, RefreshCw } from "lucide-react";
 import type { FollowUpEntry, Template } from "@/lib/jobAppShared";
-import { loadOAuth, getValidAccessToken } from "@/lib/oauth";
 
-interface SmtpStored {
-  smtpHost?: string;
-  smtpPort?: string;
-  smtpUser?: string;
-  smtpPass?: string;
-  smtpSecurity?: string;
-}
-
-function loadSmtp(): SmtpStored | null {
-  try { return JSON.parse(localStorage.getItem("email-blaster-smtp") || "null"); } catch { return null; }
-}
+// Credentials (Google / SMTP) now live server-side and are resolved by the
+// send + check-replies routes — this panel no longer touches browser storage.
 
 export function FollowUpsPanel() {
   const [days, setDays] = useState(7);
@@ -55,18 +45,12 @@ export function FollowUpsPanel() {
 
   async function handleCheckReplies() {
     setError(""); setCheckMsg("");
-    const oauth = loadOAuth();
-    const token = oauth ? await getValidAccessToken() : null;
-    if (!token) {
-      setError("Sign in with Google to enable reply detection (Gmail readonly scope required).");
-      return;
-    }
     setCheckingReplies(true);
     try {
       const res = await fetch("/api/jobs/check-replies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ oauthAccessToken: token, daysThreshold: days }),
+        body: JSON.stringify({ daysThreshold: days }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -84,13 +68,6 @@ export function FollowUpsPanel() {
   async function handleSendFollowUp(it: FollowUpEntry) {
     if (!followUpTpl) {
       setError("No follow-up template found. Save a template tagged with role-type containing 'follow'.");
-      return;
-    }
-    const oauth = loadOAuth();
-    const token = oauth ? await getValidAccessToken() : null;
-    const smtp = loadSmtp();
-    if (!token && !(smtp?.smtpUser && smtp?.smtpPass)) {
-      setError("No sending credentials. Sign in with Google or set SMTP first.");
       return;
     }
 
@@ -113,16 +90,7 @@ export function FollowUpsPanel() {
         const r = (resumesData.resumes || []).find((x: { id: string; storedFilename: string }) => x.id === it.resumeId);
         if (r?.storedFilename) fd.append("resumeFilename", r.storedFilename);
       }
-      if (token) {
-        fd.append("oauthAccessToken", token);
-        fd.append("oauthEmail", oauth?.email || "");
-      } else if (smtp) {
-        fd.append("smtpHost", smtp.smtpHost || "smtp.gmail.com");
-        fd.append("smtpPort", smtp.smtpPort || "587");
-        fd.append("smtpUser", smtp.smtpUser || "");
-        fd.append("smtpPass", smtp.smtpPass || "");
-        fd.append("smtpSecurity", smtp.smtpSecurity || "starttls");
-      }
+      // Credentials are resolved server-side from the user's synced settings.
       const res = await fetch("/api/send-email", { method: "POST", body: fd });
       const data = await res.json();
       if (data.error) throw new Error(data.error);

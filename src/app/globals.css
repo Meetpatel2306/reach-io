@@ -184,6 +184,20 @@ textarea.input-field {
   transition: width 0.3s ease;
 }
 
+/* Indeterminate progress — honest "working…" bar when we can't measure real % */
+.progress-indeterminate {
+  height: 100%;
+  width: 40%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+
 /* Log container */
 .log-container {
   background: rgba(2, 6, 23, 0.8);

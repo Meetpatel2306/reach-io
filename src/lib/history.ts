@@ -64,6 +64,26 @@ export function clearHistory() {
   dispatchHistoryUpdate();
 }
 
+// Pull the current user's history from the server and cache it into localStorage
+// (the same key loadHistory reads). This is what makes history appear the same
+// on every device: the server is the source of truth, localStorage is a cache.
+// Returns the batches, or null if the fetch failed (offline / not logged in) —
+// in which case the existing local cache is left untouched.
+export async function hydrateHistoryFromServer(): Promise<SendBatch[] | null> {
+  try {
+    const res = await fetch("/api/history", { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data.batches)) return null;
+    const batches = data.batches as SendBatch[];
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(batches.slice(0, 100))); } catch {}
+    dispatchHistoryUpdate();
+    return batches;
+  } catch {
+    return null;
+  }
+}
+
 export function deleteBatch(id: string) {
   const history = loadHistory().filter((b) => b.id !== id);
   try {

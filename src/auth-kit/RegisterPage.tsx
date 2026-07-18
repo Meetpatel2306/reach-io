@@ -57,10 +57,10 @@ export function RegisterPage({
 
         <div>
           <Label>Avatar</Label>
-          <div className="grid grid-cols-10 gap-1.5 mt-1.5">
+          <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5 mt-1.5">
             {AVATARS.map((a) => (
               <button key={a} type="button" onClick={() => setAvatar(a)}
-                className={`w-8 h-8 rounded-full text-base flex items-center justify-center transition ${avatar === a ? "bg-accent text-black" : "bg-white/5 hover:bg-white/15"}`}>
+                className={`w-full aspect-square rounded-full text-base flex items-center justify-center transition ${avatar === a ? "bg-accent text-black" : "bg-white/5 hover:bg-white/15"}`}>
                 {a}
               </button>
             ))}

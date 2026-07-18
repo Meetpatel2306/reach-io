@@ -9,10 +9,10 @@ import {
   RefreshCw, Sparkles, LogOut, Crown, User as UserIcon
 } from "lucide-react";
 import Link from "next/link";
-import { saveToHistory } from "@/lib/history";
+import { saveToHistory, hydrateHistoryFromServer } from "@/lib/history";
 import type { EmailResult } from "@/lib/history";
 import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate, BUNDLED_VERSION } from "@/lib/updater";
-import { loadOAuth, clearOAuth, consumeOAuthFragment, startOAuth, getValidAccessToken, type OAuthSession } from "@/lib/oauth";
+import { startOAuth } from "@/lib/oauth";
 import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
@@ -61,6 +61,11 @@ const STATIC_BODY = "";
 const STORAGE_KEY = "email-blaster-state";
 const SMTP_STORAGE_KEY = "email-blaster-smtp";
 
+// Legacy readers — only used once to migrate a returning user's browser-stored
+// credentials up to their synced account. New writes go to the server.
+const OAUTH_STORAGE_KEY = "email-blaster-google-oauth";
+const MIGRATION_FLAG = "email-blaster-creds-migrated-v1";
+
 function loadSmtp(): SavedSmtp | null {
   try {
     const raw = localStorage.getItem(SMTP_STORAGE_KEY);
@@ -69,12 +74,14 @@ function loadSmtp(): SavedSmtp | null {
   return null;
 }
 
-function saveSmtp(config: SavedSmtp) {
-  try { localStorage.setItem(SMTP_STORAGE_KEY, JSON.stringify(config)); } catch {}
-}
-
-function clearSmtp() {
-  try { localStorage.removeItem(SMTP_STORAGE_KEY); } catch {}
+function loadLegacyOAuth(): { email: string; name: string; refreshToken: string } | null {
+  try {
+    const raw = localStorage.getItem(OAUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (s && s.email && s.refreshToken) return { email: s.email, name: s.name || "", refreshToken: s.refreshToken };
+  } catch {}
+  return null;
 }
 
 function loadState(): SavedState | null {
@@ -170,8 +177,10 @@ export default function Home() {
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
   const [autoUpdating, setAutoUpdating] = useState(false);
 
-  // Google OAuth session
-  const [oauthSession, setOauthSession] = useState<OAuthSession | null>(null);
+  // Google connection status. The actual tokens live server-side (synced across
+  // devices); the client only knows whether a Google account is connected and which.
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState("");
 
   // App auth session (login/register)
   const [authUser, setAuthUser] = useState<{ email: string; name: string; role: "admin" | "user" } | null>(null);
@@ -238,41 +247,73 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load SMTP config: ONLY from localStorage. Wait for authReady so it's scoped to current user.
-  useEffect(() => {
-    if (!authReady) return;
-    const saved = loadSmtp();
-    if (saved && saved.smtpUser && saved.smtpPass) {
-      setSmtpUser(saved.smtpUser.trim());
-      setSmtpHost(saved.smtpHost?.trim() || "smtp.gmail.com");
-      setSmtpPort(saved.smtpPort?.trim() || "587");
-      setSmtpPass(saved.smtpPass.trim());
-      setSmtpSecurity(saved.smtpSecurity?.trim() || "starttls");
-      setSmtpConfigured(true);
-    }
-  }, [authReady]);
-
   // OAuth error from URL (?oauth_error=...)
   const [oauthError, setOauthError] = useState<string>("");
 
-  // Google OAuth: consume callback fragment + load saved session + handle errors
-  // Wait for authReady so localStorage has been scoped to the current user first
+  // Pull SMTP + Google connection status from the user's synced server settings.
+  // The server never returns secrets — only whether each method is configured.
+  const hydrateSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.smtp) {
+        setSmtpConfigured(true);
+        setSmtpUser(data.smtp.user || "");
+        setSmtpHost(data.smtp.host || "smtp.gmail.com");
+        setSmtpPort(data.smtp.port || "587");
+        setSmtpSecurity(data.smtp.security || "starttls");
+      } else {
+        setSmtpConfigured(false);
+      }
+      if (data.google) {
+        setGoogleConnected(true);
+        setGoogleEmail(data.google.email || "");
+      } else {
+        setGoogleConnected(false);
+        setGoogleEmail("");
+      }
+    } catch {}
+  }, []);
+
+  // After auth is ready: migrate any legacy browser-stored creds up to the
+  // account (one time), hydrate synced settings + history, and handle the Google
+  // connect / error redirects.
   useEffect(() => {
     if (!authReady) return;
-    const fromFragment = consumeOAuthFragment();
-    if (fromFragment) {
-      setOauthSession(fromFragment);
-      setSmtpMsg(`Signed in as ${fromFragment.email}`);
-      setSmtpConfigured(true);
-    } else {
-      const saved = loadOAuth();
-      if (saved) {
-        setOauthSession(saved);
-        setSmtpConfigured(true);
-      }
-    }
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (!localStorage.getItem(MIGRATION_FLAG)) {
+          const legacySmtp = loadSmtp();
+          const legacyGoogle = loadLegacyOAuth();
+          const smtpPayload = legacySmtp && legacySmtp.smtpUser && legacySmtp.smtpPass
+            ? { host: legacySmtp.smtpHost, port: legacySmtp.smtpPort, user: legacySmtp.smtpUser, pass: legacySmtp.smtpPass, security: legacySmtp.smtpSecurity }
+            : undefined;
+          if (smtpPayload || legacyGoogle) {
+            await fetch("/api/settings/migrate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ smtp: smtpPayload, google: legacyGoogle || undefined }),
+            }).catch(() => {});
+          }
+          localStorage.setItem(MIGRATION_FLAG, "1");
+        }
+      } catch {}
+
+      if (!cancelled) await hydrateSettings();
+      hydrateHistoryFromServer();
+    })();
 
     const params = new URLSearchParams(window.location.search);
+    if (params.get("google") === "connected") {
+      setSmtpMsg("Google connected!");
+      setShowSettings(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("google");
+      history.replaceState(null, "", url.toString());
+    }
     const err = params.get("oauth_error");
     if (err) {
       setOauthError(err);
@@ -281,7 +322,9 @@ export default function Home() {
       url.searchParams.delete("oauth_error");
       history.replaceState(null, "", url.toString());
     }
-  }, [authReady]);
+
+    return () => { cancelled = true; };
+  }, [authReady, hydrateSettings]);
 
   // Load current logged-in user + sync localStorage to this user.
   // CRITICAL: this must run BEFORE any other localStorage reads (OAuth, SMTP, history)
@@ -315,11 +358,11 @@ export default function Home() {
     }
   };
 
-  const handleSignOut = () => {
-    clearOAuth();
-    setOauthSession(null);
-    if (!smtpUser || !smtpPass) setSmtpConfigured(false);
-    setSmtpMsg("Signed out from Google");
+  const handleSignOut = async () => {
+    await fetch("/api/settings/google", { method: "DELETE" }).catch(() => {});
+    setGoogleConnected(false);
+    setGoogleEmail("");
+    setSmtpMsg("Disconnected from Google");
   };
 
   useEffect(() => {
@@ -391,20 +434,20 @@ export default function Home() {
     setAutoUpdate(newVal);
   };
 
+  // Verify + save SMTP to the user's synced account (password encrypted server-side).
   const saveSmtpConfig = async () => {
-    if (!smtpUser || !smtpPass) { setSmtpMsg("Email and password are required"); return; }
+    if (!smtpUser || !smtpPass) { setSmtpMsg("Email and app password are required"); return; }
     setSavingSmtp(true);
     setSmtpMsg("");
     try {
-      const res = await fetch("/api/smtp-config", {
+      const res = await fetch("/api/settings/smtp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ smtpHost, smtpPort, smtpUser, smtpPass, smtpSecurity }),
+        body: JSON.stringify({ smtpHost, smtpPort, smtpUser, smtpPass, smtpSecurity, save: true }),
       });
       const data = await res.json();
-      if (data.error) { setSmtpMsg(data.error); }
+      if (!res.ok || data.error) { setSmtpMsg(data.error || "Failed to verify connection"); }
       else {
-        saveSmtp({ smtpHost, smtpPort, smtpUser, smtpPass, smtpSecurity });
         setSmtpMsg("Verified & Saved!");
         setSmtpConfigured(true);
         addLog("SMTP config saved & verified");
@@ -413,25 +456,26 @@ export default function Home() {
     setSavingSmtp(false);
   };
 
+  // Test credentials without saving.
   const testSmtpConnection = async () => {
-    if (!smtpUser || !smtpPass) { setSmtpMsg("Email and password are required"); return; }
+    if (!smtpUser || !smtpPass) { setSmtpMsg("Email and app password are required"); return; }
     setTestingSmtp(true);
     setSmtpMsg("");
     try {
-      const res = await fetch("/api/smtp-config", {
+      const res = await fetch("/api/settings/smtp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ smtpHost, smtpPort, smtpUser, smtpPass, smtpSecurity }),
+        body: JSON.stringify({ smtpHost, smtpPort, smtpUser, smtpPass, smtpSecurity, save: false }),
       });
       const data = await res.json();
-      if (data.error) { setSmtpMsg(data.error); }
+      if (!res.ok || data.error) { setSmtpMsg(data.error || "Failed to test connection"); }
       else { setSmtpMsg("Connection successful! Credentials are valid."); addLog("SMTP test passed"); }
     } catch { setSmtpMsg("Failed to test connection"); }
     setTestingSmtp(false);
   };
 
-  const deleteSmtpConfig = () => {
-    clearSmtp();
+  const deleteSmtpConfig = async () => {
+    await fetch("/api/settings/smtp", { method: "DELETE" }).catch(() => {});
     setSmtpConfigured(false);
     setSmtpUser("");
     setSmtpPass("");
@@ -585,17 +629,43 @@ export default function Home() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const lines = text.split("\n").filter((l) => l.trim());
+      const text = (ev.target?.result as string) || "";
+      const rawLines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (!rawLines.length) return;
+      const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+      // Split a CSV line honoring simple double-quoted fields (commas inside quotes).
+      const splitLine = (line: string): string[] => {
+        const out: string[] = [];
+        let cur = "";
+        let inQ = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+            else inQ = !inQ;
+          } else if (ch === "," && !inQ) { out.push(cur); cur = ""; }
+          else cur += ch;
+        }
+        out.push(cur);
+        return out.map((c) => c.trim().replace(/^["']|["']$/g, ""));
+      };
+      // Only treat the first row as a header if it contains no email address —
+      // otherwise a header-less CSV would silently lose its first recipient.
+      const firstHasEmail = splitLine(rawLines[0]).some((c) => c.includes("@"));
+      const startIdx = firstHasEmail ? 0 : 1;
       const parsed: Recipient[] = [];
       let skipped = 0;
-      const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
+      for (let i = startIdx; i < rawLines.length; i++) {
+        const cols = splitLine(rawLines[i]);
         let candidate: Recipient | null = null;
         if (cols.length >= 2) {
-          if (csvFormat === "name,email") candidate = { name: cols[0], email: cols[1] };
-          else candidate = { name: cols[1], email: cols[0] };
+          candidate = csvFormat === "name,email"
+            ? { name: cols[0], email: cols[1] }
+            : { name: cols[1], email: cols[0] };
+          // If the expected email column isn't an email but the other is, swap.
+          if (!isValidEmail(candidate.email) && isValidEmail(candidate.name)) {
+            candidate = { name: "", email: candidate.name };
+          }
         } else if (cols.length === 1 && cols[0].includes("@")) {
           candidate = { name: "", email: cols[0] };
         }
@@ -623,8 +693,8 @@ export default function Home() {
 
   const handleSend = async () => {
     if (!recipients.length || !subject || !body) return;
-    if (!smtpConfigured) {
-      addLog("ERROR: SMTP not configured. Open Settings first.");
+    if (!googleConnected && !smtpConfigured) {
+      addLog("ERROR: No sending method. Connect Google or add an SMTP app password in Settings.");
       setShowSettings(true);
       return;
     }
@@ -669,22 +739,8 @@ export default function Home() {
       addLog("WARNING: resume marked saved but no bytes available — sending without attachment.");
     }
 
-    // Prefer OAuth (Gmail API) when available — falls back to SMTP otherwise
-    const oauth = loadOAuth();
-    const smtp = loadSmtp();
-    if (oauth) {
-      const accessToken = await getValidAccessToken();
-      if (accessToken) {
-        fd.append("oauthAccessToken", accessToken);
-        fd.append("oauthEmail", oauth.email);
-      }
-    } else if (smtp && smtp.smtpUser && smtp.smtpPass) {
-      fd.append("smtpHost", smtp.smtpHost);
-      fd.append("smtpPort", smtp.smtpPort);
-      fd.append("smtpUser", smtp.smtpUser);
-      fd.append("smtpPass", smtp.smtpPass);
-      fd.append("smtpSecurity", smtp.smtpSecurity);
-    }
+    // Credentials (Google / SMTP) are resolved server-side from the user's synced
+    // settings — nothing sensitive is sent from the browser.
     try {
       const res = await fetch("/api/send-email", { method: "POST", body: fd });
       const data = await res.json();
@@ -706,7 +762,7 @@ export default function Home() {
           timestamp: new Date().toISOString(),
           subject,
           body,
-          from: oauth?.email || smtp?.smtpUser || smtpUser || "",
+          from: googleEmail || smtpUser || "",
           hasAttachment: !!(resumeFile && resumeSaved),
           attachmentName: resumeFile?.name || "",
           totalRecipients: recipients.length,
@@ -754,31 +810,35 @@ export default function Home() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white">Reach.io</h1>
-            {smtpUser && <p className="text-slate-500 text-xs">{smtpUser}</p>}
+            {(googleEmail || smtpUser) && <p className="text-slate-500 text-xs">{googleEmail || smtpUser}</p>}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {results.length > 0 && (
             <div className="flex gap-2">
               <span className="badge badge-success flex items-center gap-1"><Check size={12} />{sentCount}</span>
               {failedCount > 0 && <span className="badge badge-error flex items-center gap-1"><X size={12} />{failedCount}</span>}
             </div>
           )}
-          <Link
-            href="/templates"
-            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
-            title="Templates"
-          >
-            <FileText size={18} />
-          </Link>
-          <Link
-            href="/guide"
-            data-tour="guide"
-            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
-            title="Setup Guide"
-          >
-            <BookOpen size={18} />
-          </Link>
+          {/* Secondary quick-links collapse into the menu on phones to cut clutter */}
+          <div className="hidden sm:flex items-center gap-2">
+            <Link
+              href="/templates"
+              className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
+              title="Templates"
+            >
+              <FileText size={18} />
+            </Link>
+            <Link
+              href="/guide"
+              data-tour="guide"
+              className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
+              title="Setup Guide"
+            >
+              <BookOpen size={18} />
+            </Link>
+          </div>
+          {/* History + Settings stay visible everywhere — they're the core actions */}
           <Link
             href="/history"
             data-tour="history"
@@ -791,18 +851,18 @@ export default function Home() {
             onClick={() => setShowSettings(!showSettings)}
             data-tour="settings"
             className={`p-2 rounded-lg border transition-all ${
-              smtpConfigured
+              smtpConfigured || googleConnected
                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                 : "bg-amber-500/10 border-amber-500/20 text-amber-400"
             } hover:brightness-125`}
-            title="SMTP Settings"
+            title="Email Settings"
           >
             <Settings size={18} />
           </button>
           <button
             onClick={() => { setShowTour(true); setTourStep(0); }}
             data-tour="tour-btn"
-            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
+            className="hidden sm:inline-flex p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
             title="Product Tour"
           >
             <HelpCircle size={18} />
@@ -841,6 +901,16 @@ export default function Home() {
                       <p className="text-xs font-bold text-white truncate">{authUser.name || "User"}</p>
                       <p className="text-[10px] text-slate-400 truncate">{authUser.email}</p>
                     </div>
+                    {/* Mobile-only quick links (shown as icons on desktop) */}
+                    <Link href="/templates" onClick={() => setShowUserMenu(false)} className="sm:hidden flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
+                      <FileText size={12} />Templates
+                    </Link>
+                    <Link href="/guide" onClick={() => setShowUserMenu(false)} className="sm:hidden flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
+                      <BookOpen size={12} />Setup Guide
+                    </Link>
+                    <button onClick={() => { setShowUserMenu(false); setShowTour(true); setTourStep(0); }} className="sm:hidden w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
+                      <HelpCircle size={12} />Replay Tour
+                    </button>
                     {authUser.role === "admin" && (
                       <Link href="/admin" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-amber-300 hover:bg-amber-500/10">
                         <Crown size={12} />Admin Dashboard
@@ -1023,7 +1093,7 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <Settings size={20} className="text-violet-400" />
               <h2 className="text-lg font-semibold text-white">Email Settings</h2>
-              {smtpConfigured && (
+              {(smtpConfigured || googleConnected) && (
                 <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">Connected</span>
               )}
             </div>
@@ -1059,7 +1129,7 @@ export default function Home() {
           )}
 
           {/* Google OAuth — primary, recommended path */}
-          {oauthSession ? (
+          {googleConnected ? (
             <div className="mb-5 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1068,7 +1138,7 @@ export default function Home() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-white">Signed in with Google</p>
-                    <p className="text-xs text-emerald-300">{oauthSession.email}</p>
+                    <p className="text-xs text-emerald-300">{googleEmail}</p>
                   </div>
                 </div>
                 <button onClick={handleSignOut} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-xs hover:bg-red-500/20 transition-all">
@@ -1099,7 +1169,7 @@ export default function Home() {
           )}
 
           {/* Divider with "or" */}
-          {!oauthSession && (
+          {!googleConnected && (
             <div className="flex items-center gap-3 my-4">
               <div className="flex-1 h-px bg-slate-700/40" />
               <span className="text-[10px] text-slate-600 uppercase tracking-widest">or use SMTP</span>
@@ -1107,7 +1177,7 @@ export default function Home() {
             </div>
           )}
 
-          {!oauthSession && <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {!googleConnected && <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Email Address</label>
               <input className="input-field" type="email" placeholder="you@gmail.com" value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} />
@@ -1142,10 +1212,10 @@ export default function Home() {
           </div>}
 
           {smtpMsg && (
-            <p className={`text-sm mt-3 ${smtpMsg.includes("successful") || smtpMsg.includes("Signed in") || smtpMsg.includes("Verified") || smtpMsg.includes("Saved") ? "text-emerald-400" : smtpMsg.includes("removed") || smtpMsg.includes("Signed out") ? "text-amber-400" : "text-red-400"}`}>{smtpMsg}</p>
+            <p className={`text-sm mt-3 ${smtpMsg.includes("Disconnected") || smtpMsg.includes("removed") ? "text-amber-400" : (smtpMsg.includes("successful") || smtpMsg.includes("connected") || smtpMsg.includes("Verified") || smtpMsg.includes("Saved")) ? "text-emerald-400" : "text-red-400"}`}>{smtpMsg}</p>
           )}
 
-          {!oauthSession && (
+          {!googleConnected && (
           <>
           <div className="flex gap-3 mt-4 flex-wrap">
             <button
@@ -1667,8 +1737,8 @@ export default function Home() {
 
               {sending && (
                 <div className="mb-4">
-                  <div className="progress-bar"><div className="progress-fill" style={{ width: "50%" }} /></div>
-                  <p className="text-xs text-slate-400 mt-1 flex items-center gap-1"><Activity size={12} className="animate-pulse" />Sending...</p>
+                  <div className="progress-bar"><div className="progress-indeterminate" /></div>
+                  <p className="text-xs text-slate-400 mt-1 flex items-center gap-1"><Activity size={12} className="animate-pulse" />Sending to {recipients.length} recipient{recipients.length === 1 ? "" : "s"} — keep this tab open…</p>
                 </div>
               )}
 
@@ -1676,8 +1746,8 @@ export default function Home() {
                 <button onClick={() => setCurrentStep(3)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-sm">
                   <ChevronLeft size={16} />Back
                 </button>
-                <button onClick={handleSend} disabled={sending || !recipients.length || !smtpConfigured} className="btn-primary flex-1 text-lg py-3 flex items-center justify-center gap-2">
-                  <Send size={18} />{sending ? "Sending..." : !smtpConfigured ? "Configure SMTP First" : `Send to ${recipients.length}`}
+                <button onClick={handleSend} disabled={sending || !recipients.length || (!googleConnected && !smtpConfigured)} className="btn-primary flex-1 text-lg py-3 flex items-center justify-center gap-2">
+                  <Send size={18} />{sending ? "Sending..." : (!googleConnected && !smtpConfigured) ? "Configure Email First" : `Send to ${recipients.length}`}
                 </button>
               </div>
 
@@ -1710,7 +1780,7 @@ export default function Home() {
             <div className="space-y-3 text-sm">
               <div>
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider">From</span>
-                <p className="text-slate-300">{smtpUser || "..."}</p>
+                <p className="text-slate-300">{googleEmail || smtpUser || "..."}</p>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 uppercase tracking-wider">Subject</span>

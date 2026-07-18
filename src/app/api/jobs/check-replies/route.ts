@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { followUpsDue, listHistory, updateHistory } from "@/lib/jobApp";
+import { getGoogleForSend } from "@/lib/settings";
+import { getGoogleAccessToken } from "@/lib/google";
 import { requireUser } from "../_helpers";
 
 // POST /api/jobs/check-replies
-// Body: { oauthAccessToken: string, daysThreshold?: number }
+// Body: { daysThreshold?: number }. Uses the user's stored (server-side) Google
+// connection to query Gmail — no client token needed, works across devices.
 // For each pending follow-up (sent >= threshold days ago, not yet marked replied/done),
 // queries the user's Gmail for an inbound message from that recipient AFTER the send time.
 // If found, marks `followUpDone: true` and `replied: true` in the history record.
@@ -37,13 +40,20 @@ export async function POST(req: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const body = await req.json().catch(() => ({}));
-  const token: string = body.oauthAccessToken || "";
   const threshold: number = typeof body.daysThreshold === "number" ? body.daysThreshold : 7;
 
+  const google = await getGoogleForSend(auth.email);
+  if (!google) {
+    return NextResponse.json(
+      { error: "Connect Google to enable reply detection (Gmail read access is required)." },
+      { status: 400 },
+    );
+  }
+  const token = await getGoogleAccessToken(google.refreshToken);
   if (!token) {
     return NextResponse.json(
-      { error: "Google access token required. Sign in with Google to enable reply detection." },
-      { status: 400 },
+      { error: "Your Google connection has expired. Reconnect Google in Settings." },
+      { status: 401 },
     );
   }
 

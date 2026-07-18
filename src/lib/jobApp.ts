@@ -83,36 +83,19 @@ export async function migrateTemplatesIfNeeded(email: string): Promise<number> {
   const storedVer = (await kvGet<number>(kTemplatesSeedVer(email))) ?? 0;
   if (storedVer >= TEMPLATES_SEED_VERSION) return 0;
   const all = await listTemplates(email);
-  if (!all.length) return 0;
-  const defaultNames = new Set(DEFAULT_TEMPLATES.map((t) => t.name));
-  let updated = 0;
+  if (!all.length) return 0; // fresh accounts get everything via seedTemplatesIfEmpty
+  // Only ADD default templates the user doesn't already have (matched by name).
+  // Never overwrite an existing template — the old code clobbered subject/body,
+  // silently destroying any edits the user had made to a seeded template.
+  let added = 0;
   for (const def of DEFAULT_TEMPLATES) {
-    const existing = all.find((t) => t.name === def.name);
-    if (existing) {
-      await upsertTemplate(email, {
-        id: existing.id,
-        name: def.name,
-        roleType: def.roleType,
-        subject: def.subject,
-        body: def.body,
-        resumePath: def.resumePath,
-      });
-      updated++;
-    }
-  }
-  // Insert any default that didn't exist by name.
-  const refreshed = await listTemplates(email);
-  for (const def of DEFAULT_TEMPLATES) {
-    if (!refreshed.find((t) => t.name === def.name)) {
+    if (!all.find((t) => t.name === def.name)) {
       await upsertTemplate(email, def);
-      updated++;
+      added++;
     }
   }
   await kvSet(kTemplatesSeedVer(email), TEMPLATES_SEED_VERSION);
-  // Reference defaultNames so it isn't flagged as unused — we use it conceptually
-  // (keeping user-named templates untouched) but the iteration above is sufficient.
-  void defaultNames;
-  return updated;
+  return added;
 }
 
 // ---------- Contacts ----------
@@ -193,6 +176,15 @@ export async function listHistory(email: string): Promise<SendRecord[]> {
 export async function appendHistory(email: string, rec: SendRecord): Promise<void> {
   const all = await listHistory(email);
   await kvSet(kHistory(email), [...all, rec]);
+}
+
+// Append many records in ONE read-modify-write. The per-recipient appendHistory
+// loop was O(N) full-array rewrites (O(N^2) KV I/O) and racy across concurrent
+// sends; batching makes a bulk send a single write.
+export async function appendHistoryMany(email: string, recs: SendRecord[]): Promise<void> {
+  if (!recs.length) return;
+  const all = await listHistory(email);
+  await kvSet(kHistory(email), [...all, ...recs]);
 }
 
 export async function updateHistory(email: string, id: string, patch: Partial<SendRecord>): Promise<void> {

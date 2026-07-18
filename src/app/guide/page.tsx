@@ -378,17 +378,17 @@ export default function GuidePage() {
         {/* Provider selector cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
           {[
-            { id: "gmail", name: "Gmail", color: "from-red-500 to-orange-500", border: "border-red-500/30", text: "text-red-300", bg: "bg-red-500/5" },
-            { id: "outlook", name: "Outlook", color: "from-blue-500 to-cyan-500", border: "border-blue-500/30", text: "text-blue-300", bg: "bg-blue-500/5" },
-            { id: "yahoo", name: "Yahoo", color: "from-purple-500 to-pink-500", border: "border-purple-500/30", text: "text-purple-300", bg: "bg-purple-500/5" },
-            { id: "custom", name: "Custom SMTP", color: "from-slate-500 to-slate-400", border: "border-slate-500/30", text: "text-slate-300", bg: "bg-slate-500/5" },
+            { id: "gmail", name: "Gmail", color: "from-red-500 to-orange-500", border: "border-red-500/30", text: "text-red-300", bg: "bg-red-500/5", ring: "ring-red-500/40" },
+            { id: "outlook", name: "Outlook", color: "from-blue-500 to-cyan-500", border: "border-blue-500/30", text: "text-blue-300", bg: "bg-blue-500/5", ring: "ring-blue-500/40" },
+            { id: "yahoo", name: "Yahoo", color: "from-purple-500 to-pink-500", border: "border-purple-500/30", text: "text-purple-300", bg: "bg-purple-500/5", ring: "ring-purple-500/40" },
+            { id: "custom", name: "Custom SMTP", color: "from-slate-500 to-slate-400", border: "border-slate-500/30", text: "text-slate-300", bg: "bg-slate-500/5", ring: "ring-slate-500/40" },
           ].map((p) => (
             <button
               key={p.id}
               onClick={() => setActiveProvider(p.id)}
               className={`rounded-xl p-4 border text-center transition-all ${
                 activeProvider === p.id
-                  ? `${p.bg} ${p.border} ring-1 ring-offset-0 ring-offset-transparent ${p.border.replace("border-", "ring-")}`
+                  ? `${p.bg} ${p.border} ring-1 ${p.ring}`
                   : "bg-slate-800/30 border-slate-700/30 hover:border-slate-600/50"
               }`}
             >

@@ -127,9 +127,12 @@ export function buildContext(c: ContextInput): Record<string, string> {
 
 export function render(text: string, ctx: Record<string, string>): string {
   if (!text) return "";
-  return text.replace(PLACEHOLDER, (_, key: string) => {
-    const v = ctx[key];
-    return v && v !== "" ? v : `{${key}}`;
+  return text.replace(PLACEHOLDER, (whole, key: string) => {
+    // Only substitute keys we actually know about; leave unknown tokens as-is.
+    if (!(key in ctx)) return whole;
+    // For a known-but-empty value (e.g. recipient has no company/role), drop the
+    // token instead of printing a literal "{company}" into the email.
+    return ctx[key] || "";
   });
 }
 
