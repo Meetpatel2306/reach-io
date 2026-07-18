@@ -1,7 +1,6 @@
 "use client";
 import { useState, ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { AuthShell } from "./AuthShell";
 import { AVATARS, SECURITY_QUESTIONS } from "./constants";
@@ -18,7 +17,6 @@ export function RegisterPage({
   note?: ReactNode;
   subtitle?: string;
 }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -32,14 +30,15 @@ export function RegisterPage({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
-    if (password.length < 4) { setErr("Password must be at least 4 characters"); return; }
+    if (password.length < 6) { setErr("Password must be at least 6 characters"); return; }
     if (password !== confirm) { setErr("Passwords don't match"); return; }
     if (!securityAnswer.trim()) { setErr("Security answer required"); return; }
     setLoading(true);
     try {
       const u = await adapter.register({ email, displayName: name, password, avatar, securityQuestion, securityAnswer });
       toast?.(`Welcome, ${u.displayName}!${u.isAdmin ? " (Admin)" : ""}`, "success");
-      router.push(onSuccessRedirect);
+      window.location.assign(onSuccessRedirect);
+      return;
     } catch (e: any) { setErr(e?.message || "Registration failed"); }
     setLoading(false);
   }

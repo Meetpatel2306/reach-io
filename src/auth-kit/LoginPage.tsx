@@ -1,7 +1,6 @@
 "use client";
 import { useState, ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { AuthShell } from "./AuthShell";
 import type { AuthAdapter, ToastFn } from "./types";
@@ -15,7 +14,6 @@ export function LoginPage({
   onSuccessRedirect?: string;
   note?: ReactNode;
 }) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -29,7 +27,11 @@ export function LoginPage({
     try {
       const u = await adapter.login(email, password);
       toast?.(`Welcome back, ${u.displayName}`, "success");
-      router.push(onSuccessRedirect);
+      // Full-page navigation (not router.push): guarantees the just-set session
+      // cookie is sent to the middleware on the next request. A soft nav can race
+      // the cookie and bounce straight back to /login.
+      window.location.assign(onSuccessRedirect);
+      return;
     } catch (e: any) { setErr(e?.message || "Login failed"); }
     setLoading(false);
   }
