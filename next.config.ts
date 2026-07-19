@@ -16,6 +16,9 @@ try {
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Keep pdf-parse out of the bundle (it reads files at runtime) so resume
+  // text-extraction works on the server without bundler issues.
+  serverExternalPackages: ["pdf-parse"],
   env: {
     NEXT_PUBLIC_APP_VERSION: bundleVersion,
     NEXT_PUBLIC_APP_BUILD_TIME: bundleBuildTime,

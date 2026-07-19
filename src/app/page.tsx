@@ -14,6 +14,7 @@ import type { EmailResult } from "@/lib/history";
 import { setupAutoUpdateCheck, applyUpdate, checkForUpdate, getAutoUpdate, setAutoUpdate, BUNDLED_VERSION } from "@/lib/updater";
 import { startOAuth } from "@/lib/oauth";
 import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
+import { ModeToggle } from "@/components/ModeToggle";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
@@ -957,6 +958,11 @@ export default function Home() {
             <button onClick={() => setShowIOSInstall(true)} className="btn-primary text-sm flex items-center gap-1.5"><Smartphone size={14} />Install</button>
           ) : null}
         </div>
+      </div>
+
+      {/* Module switch: Outreach (this) <-> Job Finder */}
+      <div className="flex justify-center mb-6">
+        <ModeToggle active="outreach" />
       </div>
 
       {/* Update Available Banner — works on iOS PWA + Android + Desktop */}
