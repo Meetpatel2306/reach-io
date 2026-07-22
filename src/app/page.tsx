@@ -19,6 +19,7 @@ import { AiPersonalize } from "@/components/jobs/AiPersonalize";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
 import { RecipientHistoryBadge, useRecipientHistoryIndex } from "@/components/jobs/RecipientHistoryBadge";
+import { FollowUpsPanel } from "@/components/jobs/FollowUpsPanel";
 
 interface Recipient {
   name: string;
@@ -165,6 +166,8 @@ export default function Home() {
   const [isIOS, setIsIOS] = useState(false);
   const [showIOSInstall, setShowIOSInstall] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  // Email step mode: "ai" = dynamic AI-personalised draft, "template" = static templates.
+  const [composeMode, setComposeMode] = useState<"ai" | "template">("ai");
 
   // Per-recipient history lookup (loads localStorage history once and indexes by email)
   const recipientHistoryIndex = useRecipientHistoryIndex();
@@ -1339,6 +1342,9 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
 
+          {/* Follow-ups due — one-click threaded nudge (hides itself when none) */}
+          <FollowUpsPanel />
+
           {/* Saved Slots — load template + resume in one tap */}
           <SavedSlotsBar
             currentSubject={subject}
@@ -1487,6 +1493,37 @@ export default function Home() {
                 </div>
               ) : (
                 <>
+                  {/* Two ways to write the email — pick one */}
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <button
+                      onClick={() => setComposeMode("ai")}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        composeMode === "ai"
+                          ? "border-violet-500/60 bg-violet-500/15"
+                          : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                        <Sparkles size={15} className="text-violet-400" /> AI writes it
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Dynamic — personalised from the job description</p>
+                    </button>
+                    <button
+                      onClick={() => setComposeMode("template")}
+                      className={`rounded-xl border p-3 text-left transition ${
+                        composeMode === "template"
+                          ? "border-violet-500/60 bg-violet-500/15"
+                          : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                        <FileText size={15} className="text-violet-400" /> My templates
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Static — pick a saved template and edit</p>
+                    </button>
+                  </div>
+
+                  {composeMode === "ai" && (
                   <AiPersonalize
                     onGenerated={(draft) => {
                       setSubject(draft.subject);
@@ -1504,6 +1541,9 @@ export default function Home() {
                       }
                     }}
                   />
+                  )}
+                  {composeMode === "template" && (
+                  <>
                   <p className="text-xs text-slate-500 mb-4">Same email goes to all recipients (placeholders are personalised per-recipient).</p>
                   <TemplatePicker
                     subject={subject}
@@ -1537,6 +1577,8 @@ export default function Home() {
                       }
                     }}
                   />
+                  </>
+                  )}
                   <div className="space-y-4">
                     <div>
                       <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Subject</label>

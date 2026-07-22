@@ -11,6 +11,7 @@ export interface AiPersonalization {
   hook: string;
   lead_project_id: string;
   second_project_id?: string;
+  role_type: "ai" | "backend";
   confidence: "high" | "low";
   reason: string;
   provider: "gemini" | "groq";
@@ -34,7 +35,23 @@ Read the job description and produce:
   1. a subject line
   2. a hook — one or two sentences that prove this email was written for THIS company
   3. which of the candidate's real projects to lead with
-  4. a confidence flag
+  4. role_type — is this fundamentally an AI/LLM/ML role or a backend/platform role
+  5. a confidence flag
+
+## How to pick lead_project_id and role_type (follow exactly, in order)
+
+1. List the 3-5 hardest technical requirements actually stated in the job description
+   (ignore boilerplate like "team player", "agile", "communication skills").
+2. Score each candidate project by how many of those requirements its "tags" and
+   summary directly cover. Direct match only — "LLM agents" matches llm/agents;
+   it does not match kafka.
+3. lead_project_id = the highest-scoring project. On a tie, prefer the project
+   that matches the job title itself.
+4. second_project_id = the next-highest scorer that covers a DIFFERENT part of the
+   requirements (breadth beats repetition). Omit it if nothing scores.
+5. role_type = "ai" if the role's core deliverable involves LLMs, agents, RAG,
+   ML, or AI features — even partially. Otherwise "backend". A backend role that
+   merely mentions "exposure to AI is a plus" is still "backend".
 
 ## Absolute rules
 
@@ -47,8 +64,8 @@ Read the job description and produce:
    description text you were given. If the job description is boilerplate with nothing
    company-specific in it, set confidence to "low" and return an empty hook. An empty
    hook is a correct answer. A generic hook is a failure.
-3. Pick lead_project_id by matching the job description's actual requirements against
-   the "tags" on each project. Choose the single best match.
+3. Pick projects only by the scoring procedure above — never by which project
+   sounds most impressive.
 
 ## Voice
 
@@ -84,6 +101,12 @@ Short sentences. Concrete nouns. No adjectives about the candidate.
 - Never open with "I". Never open with the company name alone.
 - If you would have to be vague, return "" and set confidence to "low"
 
+Example of a good hook (JD said they're building an agent platform on MCP):
+  "Your posting mentions building agent workflows on MCP — that's exactly the
+  protocol my production agent at NETAI serves its 30+ tools through."
+Example of a failure (would fit any company — never do this):
+  "Your company is doing impressive work in the AI space."
+
 ## Output
 
 Return only JSON matching the provided schema. No markdown, no commentary.`;
@@ -95,13 +118,14 @@ const RESPONSE_SCHEMA = {
     hook: { type: "string" },
     lead_project_id: { type: "string" },
     second_project_id: { type: "string" },
+    role_type: { type: "string", enum: ["ai", "backend"] },
     confidence: { type: "string", enum: ["high", "low"] },
     reason: {
       type: "string",
       description: "one line: why this hook and this project. for your review screen only, never sent.",
     },
   },
-  required: ["subject", "hook", "lead_project_id", "confidence", "reason"],
+  required: ["subject", "hook", "lead_project_id", "role_type", "confidence", "reason"],
 };
 
 function buildUserMessage(input: AiInput): string {
@@ -123,6 +147,7 @@ interface ParsedOutput {
   hook: string;
   lead_project_id: string;
   second_project_id?: string;
+  role_type: "ai" | "backend";
   confidence: "high" | "low";
   reason: string;
 }
@@ -139,6 +164,7 @@ function parseModelJson(text: string): ParsedOutput {
     hook: obj.hook.trim(),
     lead_project_id: obj.lead_project_id,
     second_project_id: typeof obj.second_project_id === "string" ? obj.second_project_id : undefined,
+    role_type: obj.role_type === "backend" ? "backend" : "ai",
     confidence: obj.confidence === "low" ? "low" : "high",
     reason: typeof obj.reason === "string" ? obj.reason : "",
   };
@@ -156,6 +182,10 @@ async function callGemini(input: AiInput, apiKey: string): Promise<ParsedOutput>
         temperature: 0.4,
         responseMimeType: "application/json",
         responseSchema: RESPONSE_SCHEMA,
+        // The output is a tiny JSON object — thinking adds seconds of latency
+        // for no quality gain on this task. 0 disables it (2.5-flash supports this).
+        thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 512,
       },
     }),
   });
@@ -176,13 +206,14 @@ async function callGroq(input: AiInput, apiKey: string): Promise<ParsedOutput> {
     body: JSON.stringify({
       model: "llama-3.3-70b-versatile",
       temperature: 0.4,
+      max_tokens: 512,
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
           content:
             SYSTEM_INSTRUCTION +
-            `\n\nReturn a single JSON object with exactly these keys: "subject" (string), "hook" (string), "lead_project_id" (string), "second_project_id" (string, optional), "confidence" ("high" or "low"), "reason" (string).`,
+            `\n\nReturn a single JSON object with exactly these keys: "subject" (string), "hook" (string), "lead_project_id" (string), "second_project_id" (string, optional), "role_type" ("ai" or "backend"), "confidence" ("high" or "low"), "reason" (string).`,
         },
         { role: "user", content: buildUserMessage(input) },
       ],

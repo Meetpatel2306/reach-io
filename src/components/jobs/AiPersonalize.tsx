@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Loader2, ShieldAlert, ChevronDown, ChevronUp } from "lucide-react";
+import { Sparkles, Loader2, ShieldAlert } from "lucide-react";
 
 // AI-personalised draft generator (Gemini, with Groq as automatic backup).
 // The AI only writes the subject line + a company-specific hook and picks which
@@ -30,7 +30,6 @@ const FORMAT_LABELS: Record<string, string> = {
 };
 
 export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) => void }) {
-  const [open, setOpen] = useState(true);
   const [company, setCompany] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
   const [recipientName, setRecipientName] = useState("");
@@ -72,22 +71,10 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
 
   return (
     <div className="mb-4 rounded-xl border border-violet-500/30 bg-violet-500/5 overflow-hidden">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-violet-500/5 transition"
-      >
-        <span className="flex items-center gap-2 text-sm font-semibold text-violet-200">
-          <Sparkles size={16} className="text-violet-400" />
-          AI-personalised email (paste the job description)
-        </span>
-        {open ? <ChevronUp size={16} className="text-violet-300" /> : <ChevronDown size={16} className="text-violet-300" />}
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 space-y-3 border-t border-violet-500/20 pt-3">
+      <div className="px-4 pb-4 space-y-3 pt-3">
           <p className="text-xs text-slate-400">
-            The AI writes only the subject + a hook proving the email was written for this company, and picks which of
-            your real projects to lead with. Review and edit the draft below before sending — it never auto-sends.
+            Fill these in, hit Generate — the AI writes a personalised draft in your template format. You review and
+            edit it below before anything is sent.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -169,8 +156,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
               </p>
             </div>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

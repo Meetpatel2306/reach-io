@@ -101,10 +101,12 @@ export async function POST(req: NextRequest) {
     const secondProject = ai.second_project_id ? getProject(ai.second_project_id) : null;
     const firstName = deriveFirstName(recipientName, recipientEmail);
 
+    // Auto format: trust the AI's role_type read of the JD; fall back to the
+    // lead project's nature if it's ever missing.
     const format: "ai" | "backend" | "fixed" =
       requestedFormat === "ai" || requestedFormat === "backend" || requestedFormat === "fixed"
         ? requestedFormat
-        : pickFormatForProject(leadProject.id);
+        : ai.role_type || pickFormatForProject(leadProject.id);
 
     const rendered = format === "fixed"
       ? renderOutreachBody({
