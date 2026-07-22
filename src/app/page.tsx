@@ -6,7 +6,7 @@ import {
   Save, ChevronRight, ChevronLeft, Download, Activity,
   Clock, Paperclip, Eye, EyeOff, Settings, Loader2, History,
   Zap, HelpCircle, Shield, Key, BookOpen, Share, Plus, Smartphone,
-  RefreshCw, Sparkles, LogOut, Crown, User as UserIcon
+  RefreshCw, Sparkles, LogOut, Crown, User as UserIcon, BellRing
 } from "lucide-react";
 import Link from "next/link";
 import { saveToHistory, hydrateHistoryFromServer } from "@/lib/history";
@@ -19,7 +19,6 @@ import { AiPersonalize } from "@/components/jobs/AiPersonalize";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
 import { RecipientHistoryBadge, useRecipientHistoryIndex } from "@/components/jobs/RecipientHistoryBadge";
-import { FollowUpsPanel } from "@/components/jobs/FollowUpsPanel";
 
 interface Recipient {
   name: string;
@@ -844,6 +843,13 @@ export default function Home() {
           </div>
           {/* History + Settings stay visible everywhere — they're the core actions */}
           <Link
+            href="/followups"
+            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-amber-300 hover:border-amber-500/30 transition-all"
+            title="Follow-ups"
+          >
+            <BellRing size={18} />
+          </Link>
+          <Link
             href="/history"
             data-tour="history"
             className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
@@ -922,6 +928,9 @@ export default function Home() {
                     )}
                     <Link href="/history" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
                       <History size={12} />Send History
+                    </Link>
+                    <Link href="/followups" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
+                      <BellRing size={12} />Follow-ups
                     </Link>
                     <Link href="/support" onClick={() => setShowUserMenu(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-violet-500/10">
                       <HelpCircle size={12} />Help & Support
@@ -1342,9 +1351,6 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
 
-          {/* Follow-ups due — one-click threaded nudge (hides itself when none) */}
-          <FollowUpsPanel />
-
           {/* Saved Slots — load template + resume in one tap */}
           <SavedSlotsBar
             currentSubject={subject}
@@ -1473,6 +1479,37 @@ export default function Home() {
                 <h2 className="text-lg font-semibold text-white">Email Content</h2>
               </div>
 
+              {/* Two ways to write the email — always visible. Switching while a
+                  saved email exists reopens the editor in the chosen mode. */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <button
+                  onClick={() => { setComposeMode("ai"); if (emailSaved) unsaveEmail(); }}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    composeMode === "ai"
+                      ? "border-violet-500/60 bg-violet-500/15"
+                      : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                    <Sparkles size={15} className="text-violet-400" /> AI writes it
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Dynamic — personalised from the job description</p>
+                </button>
+                <button
+                  onClick={() => { setComposeMode("template"); if (emailSaved) unsaveEmail(); }}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    composeMode === "template"
+                      ? "border-violet-500/60 bg-violet-500/15"
+                      : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-white flex items-center gap-1.5">
+                    <FileText size={15} className="text-violet-400" /> My templates
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Static — pick a saved template and edit</p>
+                </button>
+              </div>
+
               {emailSaved ? (
                 <div className="bg-emerald-500/5 border border-emerald-500/15 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
@@ -1493,36 +1530,6 @@ export default function Home() {
                 </div>
               ) : (
                 <>
-                  {/* Two ways to write the email — pick one */}
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <button
-                      onClick={() => setComposeMode("ai")}
-                      className={`rounded-xl border p-3 text-left transition ${
-                        composeMode === "ai"
-                          ? "border-violet-500/60 bg-violet-500/15"
-                          : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
-                      }`}
-                    >
-                      <p className="text-sm font-semibold text-white flex items-center gap-1.5">
-                        <Sparkles size={15} className="text-violet-400" /> AI writes it
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Dynamic — personalised from the job description</p>
-                    </button>
-                    <button
-                      onClick={() => setComposeMode("template")}
-                      className={`rounded-xl border p-3 text-left transition ${
-                        composeMode === "template"
-                          ? "border-violet-500/60 bg-violet-500/15"
-                          : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
-                      }`}
-                    >
-                      <p className="text-sm font-semibold text-white flex items-center gap-1.5">
-                        <FileText size={15} className="text-violet-400" /> My templates
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Static — pick a saved template and edit</p>
-                    </button>
-                  </div>
-
                   {composeMode === "ai" && (
                   <AiPersonalize
                     onGenerated={(draft) => {

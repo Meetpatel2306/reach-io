@@ -9,7 +9,7 @@ import { FOLLOW_UP_DAY, type FollowUpEntry } from "@/lib/jobAppShared";
 // checks Gmail for a reply first (never nudges someone who already answered),
 // and enforces "one follow-up, ever". No template setup needed.
 
-export function FollowUpsPanel() {
+export function FollowUpsPanel({ standalone = false }: { standalone?: boolean }) {
   const [days, setDays] = useState(FOLLOW_UP_DAY);
   const [items, setItems] = useState<FollowUpEntry[]>([]);
   const [busyId, setBusyId] = useState<string>("");
@@ -81,7 +81,32 @@ export function FollowUpsPanel() {
   }
 
   if (!loaded) return null;
-  if (items.length === 0) return null;
+  if (items.length === 0) {
+    if (!standalone) return null;
+    return (
+      <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-8 text-center">
+        <MailCheck size={28} className="text-emerald-400 mx-auto mb-3" />
+        <p className="text-white font-semibold">Nothing to follow up on</p>
+        <p className="text-sm text-slate-400 mt-1">
+          When an email you sent is {days}+ days old with no reply, it will appear here with a
+          one-click follow-up that lands inside the original thread.
+        </p>
+        <label className="mt-4 inline-flex items-center gap-2 text-xs text-slate-500">
+          Show emails older than
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={30}
+            value={days}
+            onChange={(e) => setDays(parseInt(e.target.value || String(FOLLOW_UP_DAY)))}
+            className="w-14 bg-slate-900/50 border border-slate-700 rounded px-2 py-1 text-sm text-slate-300"
+          />
+          days
+        </label>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 overflow-hidden">

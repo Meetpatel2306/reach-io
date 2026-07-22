@@ -19,6 +19,7 @@ interface Result {
   provider: string;
   reason: string;
   format?: string;
+  resumeHint?: string;
   sentToday?: number;
   dailyCap?: number;
 }
@@ -56,7 +57,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
         setBlocks(data.blockReasons || ["Blocked."]);
         return;
       }
-      setResult({ provider: data.provider, reason: data.reason, format: data.format, sentToday: data.sentToday, dailyCap: data.dailyCap });
+      setResult({ provider: data.provider, reason: data.reason, format: data.format, resumeHint: data.resumeHint, sentToday: data.sentToday, dailyCap: data.dailyCap });
       onGenerated({
         subject: data.subject,
         body: data.body,
@@ -149,6 +150,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
                 Draft loaded into the editor below — review it before sending.
               </p>
               {result.reason && <p className="text-xs text-emerald-200/80">Why this angle: {result.reason}</p>}
+              {result.resumeHint && <p className="text-xs text-amber-200/90">📎 {result.resumeHint}</p>}
               <p className="text-[11px] text-emerald-200/60">
                 Written by {result.provider === "groq" ? "Groq (backup — Gemini was unavailable)" : "Gemini"}
                 {result.format ? ` · ${FORMAT_LABELS[result.format] || result.format}` : ""}

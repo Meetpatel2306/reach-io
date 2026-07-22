@@ -65,10 +65,36 @@ export function getProject(id: string): CandidateProject | null {
   return CANDIDATE_FACTS.projects.find((p) => p.id === id) || null;
 }
 
+// Words that are inbox labels, not human names — never greet these.
+const GENERIC_NAME_TOKENS = new Set([
+  "hr", "hiring", "careers", "career", "jobs", "job", "info", "contact",
+  "admin", "team", "recruit", "recruiter", "recruiting", "recruitment",
+  "talent", "support", "hello", "office", "mail", "email", "noreply", "no-reply",
+]);
+
+// A first name safe to open an email with, or null when we don't really know
+// one (generic inbox, digits-only local part, "HR Team", ...). Callers render
+// "Hi <name>," when non-null and a plain "Hello," otherwise — never "Hi Hr1,".
+export function politeFirstName(fullName?: string, email?: string): string | null {
+  const fromName = (fullName || "").trim().split(/\s+/)[0] || "";
+  const fromEmail = email ? email.split("@")[0].split(/[._\-+]/)[0] : "";
+  const candidate = fromName || fromEmail;
+  const cleaned = candidate.replace(/[^a-zA-Z]/g, "");
+  if (cleaned.length < 2) return null;
+  if (GENERIC_NAME_TOKENS.has(cleaned.toLowerCase())) return null;
+  return cleaned[0].toUpperCase() + cleaned.slice(1).toLowerCase();
+}
+
+export function greetingLine(fullName?: string, email?: string): string {
+  const name = politeFirstName(fullName, email);
+  return name ? `Hi ${name},` : "Hello,";
+}
+
 // The fixed body the app renders around the AI's hook + project pick.
 // The AI never sees or writes this.
 export function renderOutreachBody(opts: {
-  recipientFirstName: string;
+  recipientName?: string;
+  recipientEmail?: string;
   hook: string;
   leadProject: CandidateProject;
   secondProject?: CandidateProject | null;
@@ -76,7 +102,7 @@ export function renderOutreachBody(opts: {
   const second = opts.secondProject && opts.secondProject.id !== opts.leadProject.id
     ? `\nI also built ${opts.secondProject.summary}.`
     : "";
-  return `Hi ${opts.recipientFirstName},
+  return `${greetingLine(opts.recipientName, opts.recipientEmail)}
 
 ${opts.hook}
 
@@ -96,11 +122,13 @@ Resume attached.`;
 export type EmailFormat = "ai" | "backend" | "fixed";
 
 export function renderRoleTemplateBody(format: "ai" | "backend", opts: {
-  recipientFirstName: string;
+  recipientName?: string;
+  recipientEmail?: string;
   hook: string;
 }): string {
+  const greeting = greetingLine(opts.recipientName, opts.recipientEmail);
   if (format === "ai") {
-    return `Hi ${opts.recipientFirstName},
+    return `${greeting}
 
 ${opts.hook}
 
@@ -112,7 +140,7 @@ Are you hiring? Resume attached.
 
 ${SIGNATURE}`;
   }
-  return `Hi ${opts.recipientFirstName},
+  return `${greeting}
 
 ${opts.hook}
 
@@ -136,20 +164,31 @@ export function pickFormatForProject(leadProjectId: string): "ai" | "backend" {
   return AI_PROJECT_IDS.has(leadProjectId) ? "ai" : "backend";
 }
 
-// Fixed follow-up copy (outreach kit, section F). Sent as a reply in the same
-// thread — subject becomes "Re: <original subject>".
-export function renderFollowUpBody(opts: { recipientFirstName: string; company: string }): string {
-  const company = opts.company ? opts.company : "your team";
-  return `Hi ${opts.recipientFirstName},
+// Fixed follow-up copy — professional register. Sent as a reply in the same
+// thread; subject becomes "Re: <original subject>".
+export function renderFollowUpBody(opts: {
+  recipientName?: string;
+  recipientEmail?: string;
+  company?: string;
+  role?: string;
+}): string {
+  const greeting = greetingLine(opts.recipientName, opts.recipientEmail);
+  const about = opts.role
+    ? ` regarding the ${opts.role} position${opts.company ? ` at ${opts.company}` : ""}`
+    : opts.company
+      ? ` I sent to ${opts.company}`
+      : "";
+  const interest = opts.company ? opts.company : "the opportunity";
+  return `${greeting}
 
-Following up on the note below in case it got buried.
+I wanted to follow up on my earlier email${about}, in case it got buried.
 
-Short version: a year building production LLM agents — MCP tool-calling, RAG, and the FastAPI/Kafka/ClickHouse backend underneath. Still very interested in ${company}.
+A quick recap: over the past year at NETAI I have built production LLM systems — an MCP tool-calling agent, a Retrieval-Augmented Generation pipeline, and the FastAPI/Kafka/ClickHouse backend underneath them. I remain very interested in ${interest}.
 
-If it isn't a fit right now, no problem at all — just let me know and I'll stop nudging.
+If the timing isn't right, no problem at all — a short note either way would be much appreciated.
 
-Thanks,
-Meet`;
+Best regards,
+${SIGNATURE}`;
 }
 
 // Generic inboxes are where resumes go to die — hard-block them.

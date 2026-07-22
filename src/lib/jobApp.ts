@@ -102,12 +102,17 @@ export async function migrateTemplatesIfNeeded(email: string): Promise<number> {
   }
 
   // Only ADD default templates the user doesn't already have (matched by name).
-  // Never overwrite an existing template — that would clobber user edits.
+  // Never overwrite an existing template's subject/body — that would clobber
+  // user edits. roleType (pure matching keywords, invisible in the email) IS
+  // refreshed so template auto-suggestion keeps improving.
   let added = 0;
   for (const def of DEFAULT_TEMPLATES) {
-    if (!all.find((t) => t.name === def.name)) {
+    const existing = all.find((t) => t.name === def.name);
+    if (!existing) {
       await upsertTemplate(email, def);
       added++;
+    } else if (existing.roleType !== def.roleType) {
+      await upsertTemplate(email, { id: existing.id, roleType: def.roleType });
     }
   }
   await kvSet(kTemplatesSeedVer(email), TEMPLATES_SEED_VERSION);

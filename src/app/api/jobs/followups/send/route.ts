@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/app/api/jobs/_helpers";
-import { appendHistory, deriveFirstName, listHistory, newId, nowIso, updateHistory, type SendRecord } from "@/lib/jobApp";
+import { appendHistory, listHistory, newId, nowIso, updateHistory, type SendRecord } from "@/lib/jobApp";
 import { renderFollowUpBody } from "@/lib/candidate";
 import { resolveTransport, sendOne } from "@/lib/mailer";
 import { getGoogleForSend } from "@/lib/settings";
@@ -72,8 +72,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: transport.error }, { status: 400 });
     }
 
-    const firstName = deriveFirstName(rec.contactName, rec.contactEmail);
-    const followUpBody = renderFollowUpBody({ recipientFirstName: firstName, company: rec.company });
+    const followUpBody = renderFollowUpBody({
+      recipientName: rec.contactName,
+      recipientEmail: rec.contactEmail,
+      company: rec.company,
+      role: rec.role,
+    });
     const subject = rec.subject.startsWith("Re:") ? rec.subject : `Re: ${rec.subject}`;
 
     const info = await sendOne(transport, {

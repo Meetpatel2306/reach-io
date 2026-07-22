@@ -211,7 +211,7 @@ export function alreadyContacted(history: SendRecord[], email: string, withinDay
 
 // Bump this whenever DEFAULT_TEMPLATES content changes — server migration runs
 // on next load (see migrateTemplatesIfNeeded in jobApp.ts).
-export const TEMPLATES_SEED_VERSION = 5;
+export const TEMPLATES_SEED_VERSION = 6;
 
 // Names of retired templates removed by the v5 migration. The old bodies opened
 // "Dear Hiring Team / I hope this message finds you well" — the exact pattern
@@ -226,7 +226,9 @@ export const RETIRED_TEMPLATE_NAMES = [
 export const DEFAULT_TEMPLATES: Omit<Template, "id" | "createdAt" | "updatedAt">[] = [
   {
     name: "AI Engineer",
-    roleType: "ai engineer ml llm agent developer",
+    // Rich keyword list — template auto-suggestion scores these tokens against
+    // the role title, so cover every phrasing recruiters actually use.
+    roleType: "ai ml machine learning engineer developer llm genai generative agent agentic rag nlp data scientist deep prompt langchain python artificial intelligence",
     subject: "AI Engineer — production LLM agent over 30+ tools",
     body: `Hi {first_name},
 
@@ -244,7 +246,7 @@ Meet Patel
   },
   {
     name: "Python Developer",
-    roleType: "python backend developer fastapi",
+    roleType: "python backend developer engineer fastapi django flask api server sde software fullstack full stack web services microservices kafka data",
     subject: "Python/FastAPI engineer — Kafka→ClickHouse at sub-5s latency",
     body: `Hi {first_name},
 

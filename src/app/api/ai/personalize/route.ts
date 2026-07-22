@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/app/api/jobs/_helpers";
 import { generatePersonalization } from "@/lib/ai";
 import { GENERIC_INBOX, getProject, pickFormatForProject, renderOutreachBody, renderRoleTemplateBody } from "@/lib/candidate";
-import { deriveFirstName, listHistory } from "@/lib/jobApp";
+import { listHistory } from "@/lib/jobApp";
 
 // POST /api/ai/personalize
 // Body: { company, roleTitle, jdText, recipientName?, recipientTitle?, recipientEmail? }
@@ -99,7 +99,6 @@ export async function POST(req: NextRequest) {
 
     const leadProject = getProject(ai.lead_project_id) || getProject("mcp_agent")!;
     const secondProject = ai.second_project_id ? getProject(ai.second_project_id) : null;
-    const firstName = deriveFirstName(recipientName, recipientEmail);
 
     // Auto format: trust the AI's role_type read of the JD; fall back to the
     // lead project's nature if it's ever missing.
@@ -110,12 +109,13 @@ export async function POST(req: NextRequest) {
 
     const rendered = format === "fixed"
       ? renderOutreachBody({
-          recipientFirstName: firstName,
+          recipientName,
+          recipientEmail,
           hook: ai.hook,
           leadProject,
           secondProject,
         })
-      : renderRoleTemplateBody(format, { recipientFirstName: firstName, hook: ai.hook });
+      : renderRoleTemplateBody(format, { recipientName, recipientEmail, hook: ai.hook });
 
     // Template-integrity check: nothing bracketed or unrendered may survive.
     if (/[\[\]]|\{\{/.test(rendered) || /[\[\]]|\{\{/.test(ai.subject)) {
@@ -134,6 +134,9 @@ export async function POST(req: NextRequest) {
       confidence: ai.confidence,
       provider: ai.provider,
       format,
+      resumeHint: format === "backend"
+        ? "Attach your Python/Backend resume for this one."
+        : "Attach your AI Engineer resume (Meet_Patel_AI_Engineer.pdf) for this one.",
       leadProject: leadProject.id,
       sentToday,
       dailyCap: DAILY_CAP,
