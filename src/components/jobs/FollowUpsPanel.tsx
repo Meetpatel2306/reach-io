@@ -1,33 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, CheckCircle2, Send, Loader2, MailCheck, RefreshCw } from "lucide-react";
-import type { FollowUpEntry, Template } from "@/lib/jobAppShared";
+import { Bell, CheckCircle2, Loader2, MailCheck, RefreshCw, MessageSquareReply } from "lucide-react";
+import { FOLLOW_UP_DAY, type FollowUpEntry } from "@/lib/jobAppShared";
 
-// Credentials (Google / SMTP) now live server-side and are resolved by the
-// send + check-replies routes — this panel no longer touches browser storage.
+// One-click threaded follow-ups. The server sends the fixed follow-up copy as a
+// REPLY inside the original email thread (Re: subject + In-Reply-To headers),
+// checks Gmail for a reply first (never nudges someone who already answered),
+// and enforces "one follow-up, ever". No template setup needed.
 
 export function FollowUpsPanel() {
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(FOLLOW_UP_DAY);
   const [items, setItems] = useState<FollowUpEntry[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
   const [busyId, setBusyId] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [checkingReplies, setCheckingReplies] = useState(false);
-  const [checkMsg, setCheckMsg] = useState("");
 
   const refresh = async () => {
     try {
-      const [fuRes, tplRes] = await Promise.all([
-        fetch(`/api/jobs/followups?days=${days}`, { cache: "no-store" }),
-        fetch("/api/jobs/templates", { cache: "no-store" }),
-      ]);
-      const fu = await fuRes.json();
-      const tpls = await tplRes.json();
-      if (Array.isArray(fu.followUps)) setItems(fu.followUps);
-      if (Array.isArray(tpls.templates)) setTemplates(tpls.templates);
+      const res = await fetch(`/api/jobs/followups?days=${days}`, { cache: "no-store" });
+      const data = await res.json();
+      if (Array.isArray(data.followUps)) setItems(data.followUps);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -36,15 +32,13 @@ export function FollowUpsPanel() {
   };
   useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [days]);
 
-  const followUpTpl = templates.find((t) => (t.roleType || "").toLowerCase().includes("follow"));
-
   async function handleResolve(id: string) {
     await fetch(`/api/jobs/followups/${id}/done`, { method: "POST" });
     refresh();
   }
 
   async function handleCheckReplies() {
-    setError(""); setCheckMsg("");
+    setError(""); setNotice("");
     setCheckingReplies(true);
     try {
       const res = await fetch("/api/jobs/check-replies", {
@@ -53,10 +47,8 @@ export function FollowUpsPanel() {
         body: JSON.stringify({ daysThreshold: days }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Reply check failed");
-      }
-      setCheckMsg(`Checked ${data.checked} · ${data.repliedCount} replied · ${data.pendingCount} still pending.`);
+      if (!res.ok) throw new Error(data.error || "Reply check failed");
+      setNotice(`Checked ${data.checked} · ${data.repliedCount} replied · ${data.pendingCount} still pending.`);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -66,39 +58,23 @@ export function FollowUpsPanel() {
   }
 
   async function handleSendFollowUp(it: FollowUpEntry) {
-    if (!followUpTpl) {
-      setError("No follow-up template found. Save a template tagged with role-type containing 'follow'.");
-      return;
-    }
-
-    setBusyId(it.id); setError("");
+    setBusyId(it.id); setError(""); setNotice("");
     try {
-      const fd = new FormData();
-      fd.append("recipients", JSON.stringify([{
-        name: it.contactName,
-        email: it.contactEmail,
-        company: it.company,
-        role: it.role,
-      }]));
-      fd.append("subject", followUpTpl.subject);
-      fd.append("body", followUpTpl.body);
-      fd.append("minDelay", "0");
-      fd.append("maxDelay", "0");
-      if (it.resumeId) {
-        const resumesRes = await fetch("/api/jobs/resumes", { cache: "no-store" });
-        const resumesData = await resumesRes.json();
-        const r = (resumesData.resumes || []).find((x: { id: string; storedFilename: string }) => x.id === it.resumeId);
-        if (r?.storedFilename) fd.append("resumeFilename", r.storedFilename);
-      }
-      // Credentials are resolved server-side from the user's synced settings.
-      const res = await fetch("/api/send-email", { method: "POST", body: fd });
+      const res = await fetch("/api/jobs/followups/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: it.id }),
+      });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.failed > 0) throw new Error(data.results?.[0]?.error || "Send failed");
-      await fetch(`/api/jobs/followups/${it.id}/done`, { method: "POST" });
-      refresh();
+      if (!res.ok) throw new Error(data.error || "Follow-up failed");
+      if (data.replied) {
+        setNotice(`${it.contactName || it.contactEmail} already replied — resolved, no nudge sent.`);
+      } else {
+        setNotice(data.message || "Follow-up sent.");
+      }
+      await refresh();
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId("");
     }
@@ -117,7 +93,7 @@ export function FollowUpsPanel() {
           <Bell size={20} className="text-amber-400 shrink-0" />
           <div className="text-left min-w-0">
             <p className="text-base sm:text-sm font-bold text-white truncate">{items.length} follow-up{items.length === 1 ? "" : "s"} due</p>
-            <p className="text-xs text-amber-200/70">Sent {days}+ days ago, no follow-up yet.</p>
+            <p className="text-xs text-amber-200/70">Sent {days}+ days ago, no reply yet. One click replies in the same thread.</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -129,7 +105,7 @@ export function FollowUpsPanel() {
               min={3}
               max={30}
               value={days}
-              onChange={(e) => setDays(parseInt(e.target.value || "7"))}
+              onChange={(e) => setDays(parseInt(e.target.value || String(FOLLOW_UP_DAY)))}
               className="w-14 bg-slate-900/50 border border-slate-700 rounded px-2 py-1 text-sm text-amber-200"
             />
             d
@@ -156,7 +132,7 @@ export function FollowUpsPanel() {
             >
               <RefreshCw size={14} /> Refresh
             </button>
-            {checkMsg && <p className="text-xs text-emerald-300">{checkMsg}</p>}
+            {notice && <p className="text-xs text-emerald-300">{notice}</p>}
           </div>
           {error && <p className="px-4 py-2 text-sm text-red-400">{error}</p>}
           <div className="divide-y divide-amber-500/10">
@@ -170,18 +146,19 @@ export function FollowUpsPanel() {
                   {it.role || "—"} <span className="text-slate-600">at</span> {it.company || "—"}
                 </p>
                 <p className="text-xs text-amber-200/70 mt-1">
-                  Sent {it.daysSinceSent}d ago · {it.resumeLabel || "no resume"}
+                  Sent {it.daysSinceSent}d ago · &ldquo;{it.subject}&rdquo;
+                  {it.messageId || it.threadId ? " · will reply in-thread" : " · pre-threading send (goes as Re: with same subject)"}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={() => handleSendFollowUp(it)}
-                  disabled={busyId === it.id || !followUpTpl}
+                  disabled={busyId === it.id}
                   className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 text-sm font-medium hover:bg-amber-500/25 inline-flex items-center justify-center gap-1.5 disabled:opacity-40 active:scale-[0.98] transition"
-                  title={!followUpTpl ? "No follow-up template found" : ""}
+                  title="Checks Gmail for a reply first, then sends the follow-up inside the original thread"
                 >
-                  {busyId === it.id ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                  Send follow-up
+                  {busyId === it.id ? <Loader2 size={16} className="animate-spin" /> : <MessageSquareReply size={16} />}
+                  {busyId === it.id ? "Sending..." : "Follow up (in-thread)"}
                 </button>
                 <button
                   onClick={() => handleResolve(it.id)}

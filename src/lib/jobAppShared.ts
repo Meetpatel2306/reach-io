@@ -62,6 +62,10 @@ export interface SendRecord {
   body: string;
   isFollowUp: boolean;
   followUpDone: boolean;
+  // RFC-2822 Message-ID + Gmail thread id of the sent message — lets the
+  // one-click follow-up reply inside the same thread instead of starting a new one.
+  messageId?: string;
+  threadId?: string;
   error?: string;
 }
 
@@ -174,7 +178,10 @@ export function suggestResume(role: string, resumes: ResumeMeta[]): ResumeMeta |
 
 // ---------- Follow-ups ----------
 
-export function followUpsDue(history: SendRecord[], thresholdDays = 7): FollowUpEntry[] {
+// Day 6 is the follow-up day: one follow-up, ever, then stop.
+export const FOLLOW_UP_DAY = 6;
+
+export function followUpsDue(history: SendRecord[], thresholdDays = FOLLOW_UP_DAY): FollowUpEntry[] {
   const latestByEmail = new Map<string, SendRecord>();
   for (const r of history) {
     if (r.status !== "sent") continue;
@@ -202,74 +209,58 @@ export function alreadyContacted(history: SendRecord[], email: string, withinDay
 
 // ---------- Default templates (used by server seeder) ----------
 
-// Bump this whenever DEFAULT_TEMPLATES content changes — server will overwrite
-// existing templates with the same name on next load.
-export const TEMPLATES_SEED_VERSION = 4;
+// Bump this whenever DEFAULT_TEMPLATES content changes — server migration runs
+// on next load (see migrateTemplatesIfNeeded in jobApp.ts).
+export const TEMPLATES_SEED_VERSION = 5;
+
+// Names of retired templates removed by the v5 migration. The old bodies opened
+// "Dear Hiring Team / I hope this message finds you well" — the exact pattern
+// that returned 0 replies from 200 sends. The follow-up template is retired too:
+// follow-ups are now sent threaded from the Follow-ups panel, not as new emails.
+export const RETIRED_TEMPLATE_NAMES = [
+  "Python Backend Developer",
+  "AI / ML Developer",
+  "Follow-Up (7 Days)",
+];
 
 export const DEFAULT_TEMPLATES: Omit<Template, "id" | "createdAt" | "updatedAt">[] = [
   {
-    name: "Python Backend Developer",
-    roleType: "python backend developer",
-    subject: "Application for Python Backend Developer Role",
-    body: `Dear Hiring Team,
+    name: "AI Engineer",
+    roleType: "ai engineer ml llm agent developer",
+    subject: "AI Engineer — production LLM agent over 30+ tools",
+    body: `Hi {first_name},
 
-I hope this message finds you well. I am writing to express my interest in Python Backend Developer opportunities on your team.
+{custom1}
 
-I currently work as a Software Developer at NETAI, where I build production backend services and real-time monitoring systems. My recent work includes designing and shipping a RADIUS (AAA) integration for centralised device authentication, authorisation, and accounting, as well as architecting an end-to-end alerting pipeline using Alertmanager, Kafka, and ClickHouse for high-volume real-time alert processing and analytics. I have also built role-based and site-scoped access control to enforce fine-grained, multi-tenant permissions across the platform, and developed real-time 2D network topology visualisations powered by FastAPI and WebSockets.
+I build LLM agents that run in production, not demos. At NETAI I own our network-operations agent: a ReAct loop that plans over 30+ typed tools served through MCP servers, streams results to the UI over SSE, and runs against OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface. I also built the FAISS RAG pipeline and the FastAPI/Kafka/ClickHouse backend underneath it.
 
-My core technology stack includes Python, FastAPI, Pydantic, SQLAlchemy, Apache Kafka, Redis, Celery, ClickHouse, MySQL, Prometheus, Docker, and Git. In addition to my professional work, I have built personal projects such as a PDF Chatbot using FAISS and the Mistral model for retrieval-augmented question answering, and a Django-based carpooling platform with integrated payments and ride management.
+A year of this, and I'd like to do it somewhere the agent is the product.
 
-I would be grateful for the opportunity to be considered for any suitable Python Backend Developer openings on your team. My resume is attached for your review, and I would welcome the chance to discuss how my experience aligns with your needs.
+Are you hiring? Resume attached.
 
-Thank you for your time and consideration.
-
-Best regards,
 Meet Patel
-+91 8799474373 | meetpatel4384@gmail.com
-LinkedIn: https://www.linkedin.com/in/meet-patel-34399b286/
-GitHub:   https://github.com/Meetpatel2306
++91 8799474373 · linkedin.com/in/meet-patel-34399b286
 `,
   },
   {
-    name: "AI / ML Developer",
-    roleType: "ai ml developer",
-    subject: "Application for AI / ML Developer Role",
-    body: `Dear Hiring Team,
+    name: "Python Developer",
+    roleType: "python backend developer fastapi",
+    subject: "Python/FastAPI engineer — Kafka→ClickHouse at sub-5s latency",
+    body: `Hi {first_name},
 
-I hope this message finds you well. I am writing to express my interest in AI / ML Developer opportunities on your team.
+{custom1}
 
-My background combines production Python backend engineering with applied AI / ML, which I believe positions me well to ship real-world AI features. I have designed and built an end-to-end retrieval-augmented chatbot that ingests PDFs, generates embeddings, indexes them in FAISS, and serves grounded answers through the Ollama Mistral LLM, with sub-second retrieval over multi-document corpora. At NETAI, I work on real-time data pipelines using Apache Kafka and ClickHouse, which form the same kind of data infrastructure that modern ML platforms rely on for feature stores, telemetry, and model monitoring.
+I'm a backend engineer at NETAI. Two systems I own:
 
-I have strong proficiency in Python, NumPy, Pandas, Pydantic, and FastAPI for ML-serving APIs, along with hands-on experience in vector search, embeddings, prompt engineering, and integrating both local and hosted LLMs. I am currently expanding my work into LangChain, LlamaIndex, the OpenAI and Anthropic APIs, evaluation frameworks, and embedding pipelines at scale.
+- A real-time alerting pipeline — Alertmanager → Kafka → idempotent Python consumers → ClickHouse — sustaining thousands of alerts/day at sub-5-second end-to-end latency, with live WebSocket push to the ops UI.
+- A centralised RADIUS (AAA) service, plus site-scoped RBAC for multi-tenant permissions across the platform.
 
-I am seeking a role where I can contribute to building production AI features such as RAG systems, LLM-powered APIs, and ML data infrastructure, while continuing to grow into deeper ML and MLOps work. My resume is attached for your review, and I would be glad to walk you through any of my projects in more detail or discuss how I can contribute to your team.
+I've also written a TR-069/CWMP auto-configuration server from scratch and an Ed25519-signed offline licensing system.
 
-Thank you for your time and consideration.
+Are you hiring for backend? Resume attached.
 
-Best regards,
 Meet Patel
-+91 8799474373 | meetpatel4384@gmail.com
-LinkedIn: https://www.linkedin.com/in/meet-patel-34399b286/
-GitHub:   https://github.com/Meetpatel2306
-`,
-  },
-  {
-    name: "Follow-Up (7 Days)",
-    roleType: "follow up",
-    subject: "Following Up on My Application",
-    body: `Dear Hiring Team,
-
-I hope you are doing well. I am writing to follow up on the application I shared earlier regarding open Developer positions on your team. I remain very interested in the opportunity and would greatly appreciate any update you are able to share on my application.
-
-I would also be happy to provide additional details, share code samples from my projects, or schedule a short call at your convenience.
-
-Thank you again for your time and consideration.
-
-Best regards,
-Meet Patel
-+91 8799474373 | meetpatel4384@gmail.com
-LinkedIn: https://www.linkedin.com/in/meet-patel-34399b286/
-GitHub:   https://github.com/Meetpatel2306
++91 8799474373 · linkedin.com/in/meet-patel-34399b286
 `,
   },
 ];

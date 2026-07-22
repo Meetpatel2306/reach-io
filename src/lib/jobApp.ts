@@ -4,6 +4,7 @@
 import { kvGet, kvSet } from "./storage";
 import {
   DEFAULT_TEMPLATES,
+  RETIRED_TEMPLATE_NAMES,
   TEMPLATES_SEED_VERSION,
   newId,
   nowIso,
@@ -82,11 +83,26 @@ export async function seedTemplatesIfEmpty(email: string): Promise<number> {
 export async function migrateTemplatesIfNeeded(email: string): Promise<number> {
   const storedVer = (await kvGet<number>(kTemplatesSeedVer(email))) ?? 0;
   if (storedVer >= TEMPLATES_SEED_VERSION) return 0;
-  const all = await listTemplates(email);
+  let all = await listTemplates(email);
   if (!all.length) return 0; // fresh accounts get everything via seedTemplatesIfEmpty
+
+  // v5: retire the old "Dear Hiring Team" defaults (the 0-reply pattern) and the
+  // old follow-up template — but only if the user never edited them. An edited
+  // body no longer contains the seeded filler phrases, so it is left alone.
+  const dummyMarkers = [
+    "I hope this message finds you well",
+    "I am writing to follow up on the application",
+  ];
+  const toRemove = all.filter(
+    (t) => RETIRED_TEMPLATE_NAMES.includes(t.name) && dummyMarkers.some((m) => t.body.includes(m)),
+  );
+  if (toRemove.length) {
+    all = all.filter((t) => !toRemove.includes(t));
+    await kvSet(kTemplates(email), all);
+  }
+
   // Only ADD default templates the user doesn't already have (matched by name).
-  // Never overwrite an existing template — the old code clobbered subject/body,
-  // silently destroying any edits the user had made to a seeded template.
+  // Never overwrite an existing template — that would clobber user edits.
   let added = 0;
   for (const def of DEFAULT_TEMPLATES) {
     if (!all.find((t) => t.name === def.name)) {

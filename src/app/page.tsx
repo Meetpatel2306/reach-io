@@ -16,6 +16,7 @@ import { startOAuth } from "@/lib/oauth";
 import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 import { ModeToggle } from "@/components/ModeToggle";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
+import { AiPersonalize } from "@/components/jobs/AiPersonalize";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
 import { RecipientHistoryBadge, useRecipientHistoryIndex } from "@/components/jobs/RecipientHistoryBadge";
@@ -1492,6 +1493,23 @@ export default function Home() {
                 </div>
               ) : (
                 <>
+                  <AiPersonalize
+                    onGenerated={(draft) => {
+                      setSubject(draft.subject);
+                      setBody(draft.body);
+                      const email = draft.recipient.email.trim();
+                      if (email && email.includes("@")) {
+                        setRecipients((prev) =>
+                          prev.some((r) => r.email.toLowerCase() === email.toLowerCase())
+                            ? prev
+                            : [...prev, { name: draft.recipient.name, email, company: draft.recipient.company, role: draft.recipient.role }],
+                        );
+                        addLog(`AI draft loaded · recipient ${email} added`);
+                      } else {
+                        addLog("AI draft loaded into the editor — review before sending");
+                      }
+                    }}
+                  />
                   <p className="text-xs text-slate-500 mb-4">Same email goes to all recipients (placeholders are personalised per-recipient).</p>
                   <TemplatePicker
                     subject={subject}
