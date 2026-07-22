@@ -805,16 +805,16 @@ export default function Home() {
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
-      {/* Header */}
+      {/* Header — navigation lives in the fixed top bar; this row holds page
+          context (title + connected account) and page-level actions only. */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-            <Send size={20} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Reach.io</h1>
-            {(googleEmail || smtpUser) && <p className="text-slate-500 text-xs">{googleEmail || smtpUser}</p>}
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Compose</h1>
+          <p className="text-slate-500 text-xs mt-0.5">
+            {(googleEmail || smtpUser)
+              ? <>Sending as <span className="text-slate-400">{googleEmail || smtpUser}</span></>
+              : "Connect Google or SMTP in Settings to start sending"}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {results.length > 0 && (
@@ -823,40 +823,6 @@ export default function Home() {
               {failedCount > 0 && <span className="badge badge-error flex items-center gap-1"><X size={12} />{failedCount}</span>}
             </div>
           )}
-          {/* Secondary quick-links collapse into the menu on phones to cut clutter */}
-          <div className="hidden sm:flex items-center gap-2">
-            <Link
-              href="/templates"
-              className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
-              title="Templates"
-            >
-              <FileText size={18} />
-            </Link>
-            <Link
-              href="/guide"
-              data-tour="guide"
-              className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
-              title="Setup Guide"
-            >
-              <BookOpen size={18} />
-            </Link>
-          </div>
-          {/* History + Settings stay visible everywhere — they're the core actions */}
-          <Link
-            href="/followups"
-            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-amber-300 hover:border-amber-500/30 transition-all"
-            title="Follow-ups"
-          >
-            <BellRing size={18} />
-          </Link>
-          <Link
-            href="/history"
-            data-tour="history"
-            className="p-2 rounded-lg border border-slate-700/50 bg-slate-800/50 text-slate-400 hover:text-violet-300 hover:border-violet-500/30 transition-all"
-            title="Send History"
-          >
-            <History size={18} />
-          </Link>
           <button
             onClick={() => setShowSettings(!showSettings)}
             data-tour="settings"

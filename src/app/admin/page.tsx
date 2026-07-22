@@ -115,7 +115,8 @@ export default function AdminPage() {
       try {
         const me = await fetch("/api/auth/me").then((r) => r.json());
         if (me.user?.role !== "admin") {
-          router.push("/login");
+          // Logged-in non-admins go home; only the signed-out go to login.
+          router.push(me.user ? "/" : "/login");
           return;
         }
         setCurrentAdminEmail(me.user.email || "");

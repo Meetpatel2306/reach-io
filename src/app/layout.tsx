@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Footer } from "@/components/Footer";
+import { AppNav } from "@/components/AppNav";
 
 export const metadata: Metadata = {
   title: "Reach.io",
@@ -58,7 +59,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Mask icon for Safari pinned tabs */}
         <link rel="mask-icon" href="/icon-192.svg" color="#6366f1" />
       </head>
-      <body className="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+      <body className="text-slate-100 min-h-screen flex flex-col">
+        <AppNav />
         <div className="flex-1">{children}</div>
         <Footer />
         <script

@@ -40,6 +40,13 @@
 
 body {
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* Product backdrop: deep slate with soft violet auras instead of a flat fill */
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(900px 420px at -10% 30%, rgba(99, 102, 241, 0.10), transparent 60%),
+    radial-gradient(700px 500px at 50% 110%, rgba(139, 92, 246, 0.07), transparent 60%),
+    #090e1e;
+  background-attachment: fixed;
   /* iOS standalone safe area */
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
@@ -80,11 +87,59 @@ html {
 
 /* Glassmorphism card */
 .glass-card {
-  background: rgba(15, 23, 42, 0.7);
+  background: linear-gradient(180deg, rgba(23, 30, 51, 0.85), rgba(13, 18, 36, 0.85));
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(99, 102, 241, 0.15);
-  border-radius: 16px;
+  border: 1px solid rgba(129, 140, 248, 0.16);
+  border-radius: 18px;
   padding: 24px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.03) inset,
+    0 12px 32px rgba(2, 6, 23, 0.45);
+  transition: border-color 0.2s;
+}
+.glass-card:hover {
+  border-color: rgba(139, 92, 246, 0.28);
+}
+
+/* Fixed top navigation — the one panel present on every signed-in page */
+.app-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(9, 13, 28, 0.82);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(129, 140, 248, 0.14);
+  padding-top: var(--safe-top);
+}
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.nav-link:hover {
+  color: #e2e8f0;
+  background: rgba(139, 92, 246, 0.10);
+}
+.nav-link-active {
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(139, 92, 246, 0.28));
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35) inset;
+}
+.nav-link-admin { color: #fbbf24; }
+.nav-link-admin:hover { background: rgba(251, 191, 36, 0.10); color: #fcd34d; }
+.nav-link-admin-active {
+  color: #fde68a;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(217, 119, 6, 0.22));
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35) inset;
 }
 
 /* Gradient button */

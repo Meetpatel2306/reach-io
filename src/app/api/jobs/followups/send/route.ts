@@ -5,6 +5,7 @@ import { renderFollowUpBody } from "@/lib/candidate";
 import { resolveTransport, sendOne } from "@/lib/mailer";
 import { getGoogleForSend } from "@/lib/settings";
 import { getGoogleAccessToken } from "@/lib/google";
+import { hasReplyFor } from "@/lib/replies";
 
 // POST /api/jobs/followups/send  — body: { id }
 //
@@ -15,15 +16,6 @@ import { getGoogleAccessToken } from "@/lib/google";
 //      thread: subject "Re: <original>", In-Reply-To/References headers, and
 //      the Gmail thread id when we have one.
 //   3. One follow-up ever per recipient — a second click is refused.
-
-async function gmailHasReply(token: string, fromEmail: string, afterUnixSec: number): Promise<boolean> {
-  const q = `from:${fromEmail} after:${afterUnixSec}`;
-  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=${encodeURIComponent(q)}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
-  if (!res.ok) throw new Error(`Gmail list ${res.status}`);
-  const data = await res.json();
-  return Array.isArray(data.messages) && data.messages.length > 0;
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,16 +42,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "This person already got a follow-up. One follow-up, ever — then stop." }, { status: 400 });
     }
 
-    // Auto-cancel: if they replied, don't nudge.
+    // Auto-cancel: if they replied (checked against this record's own thread
+    // only), don't nudge — move them to the responses list instead.
     const google = await getGoogleForSend(auth.email);
     if (google) {
       const token = await getGoogleAccessToken(google.refreshToken);
       if (token) {
         try {
-          const afterUnix = Math.floor(new Date(rec.sentAt).getTime() / 1000);
-          if (await gmailHasReply(token, emailKey, afterUnix)) {
-            await updateHistory(auth.email, rec.id, { followUpDone: true });
-            return NextResponse.json({ replied: true, message: "They already replied — no follow-up needed. Marked as resolved." });
+          if (await hasReplyFor(token, rec)) {
+            await updateHistory(auth.email, rec.id, { followUpDone: true, replied: true, repliedAt: nowIso() });
+            return NextResponse.json({ replied: true, message: "They already replied — moved to your Responses list. No follow-up sent." });
           }
         } catch {
           // Reply check is best-effort; a Gmail hiccup shouldn't block the follow-up.

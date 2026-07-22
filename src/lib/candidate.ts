@@ -183,7 +183,7 @@ export function renderFollowUpBody(opts: {
 
 I wanted to follow up on my earlier email${about}, in case it got buried.
 
-A quick recap: over the past year at NETAI I have built production LLM systems — an MCP tool-calling agent, a Retrieval-Augmented Generation pipeline, and the FastAPI/Kafka/ClickHouse backend underneath them. I remain very interested in ${interest}.
+A quick recap: over the past year I have built production LLM systems — an MCP tool-calling agent, a Retrieval-Augmented Generation pipeline, and the FastAPI/Kafka/ClickHouse backend underneath them. I remain very interested in ${interest}.
 
 If the timing isn't right, no problem at all — a short note either way would be much appreciated.
 

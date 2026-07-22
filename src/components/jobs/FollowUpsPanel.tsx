@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, CheckCircle2, Loader2, MailCheck, RefreshCw, MessageSquareReply } from "lucide-react";
-import { FOLLOW_UP_DAY, type FollowUpEntry } from "@/lib/jobAppShared";
+import { Bell, CheckCircle2, Loader2, MailCheck, RefreshCw, MessageSquareReply, PartyPopper } from "lucide-react";
+import { FOLLOW_UP_DAY, type FollowUpEntry, type SendRecord } from "@/lib/jobAppShared";
 
 // One-click threaded follow-ups. The server sends the fixed follow-up copy as a
 // REPLY inside the original email thread (Re: subject + In-Reply-To headers),
@@ -12,6 +12,7 @@ import { FOLLOW_UP_DAY, type FollowUpEntry } from "@/lib/jobAppShared";
 export function FollowUpsPanel({ standalone = false }: { standalone?: boolean }) {
   const [days, setDays] = useState(FOLLOW_UP_DAY);
   const [items, setItems] = useState<FollowUpEntry[]>([]);
+  const [responded, setResponded] = useState<SendRecord[]>([]);
   const [busyId, setBusyId] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
@@ -24,6 +25,7 @@ export function FollowUpsPanel({ standalone = false }: { standalone?: boolean })
       const res = await fetch(`/api/jobs/followups?days=${days}`, { cache: "no-store" });
       const data = await res.json();
       if (Array.isArray(data.followUps)) setItems(data.followUps);
+      if (Array.isArray(data.responded)) setResponded(data.responded);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -81,8 +83,45 @@ export function FollowUpsPanel({ standalone = false }: { standalone?: boolean })
   }
 
   if (!loaded) return null;
+
+  const respondedCard = responded.length > 0 && (
+    <div className="mt-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 overflow-hidden">
+      <div className="p-4 flex items-center gap-3">
+        <PartyPopper size={20} className="text-emerald-400 shrink-0" />
+        <div>
+          <p className="text-base sm:text-sm font-bold text-white">
+            {responded.length} response{responded.length === 1 ? "" : "s"} received
+          </p>
+          <p className="text-xs text-emerald-200/70">These people replied — no follow-up will ever be sent to them.</p>
+        </div>
+      </div>
+      <div className="border-t border-emerald-500/20 divide-y divide-emerald-500/10">
+        {responded.map((r) => (
+          <div key={r.id} className="px-4 py-3">
+            <p className="text-sm text-white font-medium">{r.contactName || r.contactEmail}</p>
+            <p className="text-xs text-slate-400 truncate">
+              {r.role || "—"} <span className="text-slate-600">at</span> {r.company || "—"}
+              {r.repliedAt ? ` · replied ${new Date(r.repliedAt).toLocaleDateString()}` : ""}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   if (items.length === 0) {
     if (!standalone) return null;
+    if (responded.length > 0) {
+      return (
+        <div>
+          <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-5 text-center">
+            <MailCheck size={22} className="text-emerald-400 mx-auto mb-2" />
+            <p className="text-sm text-slate-300">No follow-ups due right now.</p>
+          </div>
+          {respondedCard}
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-8 text-center">
         <MailCheck size={28} className="text-emerald-400 mx-auto mb-3" />
@@ -109,7 +148,8 @@ export function FollowUpsPanel({ standalone = false }: { standalone?: boolean })
   }
 
   return (
-    <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/5 overflow-hidden">
+    <div className="mb-6">
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 overflow-hidden">
       <button
         onClick={() => setCollapsed((c) => !c)}
         className="w-full p-4 flex items-center justify-between gap-3 hover:bg-amber-500/5 active:bg-amber-500/10 transition"
@@ -197,6 +237,8 @@ export function FollowUpsPanel({ standalone = false }: { standalone?: boolean })
           </div>
         </div>
       )}
+    </div>
+    {respondedCard}
     </div>
   );
 }

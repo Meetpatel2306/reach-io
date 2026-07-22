@@ -66,6 +66,8 @@ Read the job description and produce:
    hook is a correct answer. A generic hook is a failure.
 3. Pick projects only by the scoring procedure above — never by which project
    sounds most impressive.
+4. NEVER name the candidate's current or past employers in the subject or hook.
+   Say "my current role" / "my production agent" — never a company name.
 
 ## Voice
 
@@ -103,7 +105,7 @@ Short sentences. Concrete nouns. No adjectives about the candidate.
 
 Example of a good hook (JD said they're building an agent platform on MCP):
   "Your posting mentions building agent workflows on MCP — that's exactly the
-  protocol my production agent at NETAI serves its 30+ tools through."
+  protocol my production agent serves its 30+ tools through."
 Example of a failure (would fit any company — never do this):
   "Your company is doing impressive work in the AI space."
 

@@ -42,9 +42,16 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
   const [error, setError] = useState("");
   const [blocks, setBlocks] = useState<string[]>([]);
   const [result, setResult] = useState<Result | null>(null);
+  // The generated draft sits here for review/editing — it only becomes the
+  // sendable email when the user confirms with "Use this email".
+  const [draftSubject, setDraftSubject] = useState("");
+  const [draftBody, setDraftBody] = useState("");
+  const [hasDraft, setHasDraft] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   async function generate() {
     setBusy(true); setError(""); setBlocks([]); setResult(null);
+    setHasDraft(false); setConfirmed(false);
     try {
       const res = await fetch("/api/ai/personalize", {
         method: "POST",
@@ -58,11 +65,9 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
         return;
       }
       setResult({ provider: data.provider, reason: data.reason, format: data.format, resumeHint: data.resumeHint, sentToday: data.sentToday, dailyCap: data.dailyCap });
-      onGenerated({
-        subject: data.subject,
-        body: data.body,
-        recipient: { name: recipientName, email: recipientEmail, company, role: roleTitle },
-      });
+      setDraftSubject(data.subject);
+      setDraftBody(data.body);
+      setHasDraft(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -144,17 +149,59 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
             </div>
           )}
 
-          {result && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-1">
-              <p className="text-sm text-emerald-300 font-medium">
-                Draft loaded into the editor below — review it before sending.
-              </p>
-              {result.reason && <p className="text-xs text-emerald-200/80">Why this angle: {result.reason}</p>}
-              {result.resumeHint && <p className="text-xs text-amber-200/90">📎 {result.resumeHint}</p>}
-              <p className="text-[11px] text-emerald-200/60">
-                Written by {result.provider === "groq" ? "Groq (backup — Gemini was unavailable)" : "Gemini"}
-                {result.format ? ` · ${FORMAT_LABELS[result.format] || result.format}` : ""}
-                {typeof result.sentToday === "number" ? ` · ${result.sentToday}/${result.dailyCap} sends today` : ""}
+          {hasDraft && (
+            <div className="rounded-xl border border-violet-500/40 bg-slate-900/60 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-violet-200">✉️ New generated email — review &amp; edit</p>
+                <span className="text-[10px] uppercase tracking-wider text-slate-500">nothing sent yet</span>
+              </div>
+              {result?.reason && <p className="text-xs text-slate-400">Why this angle: {result.reason}</p>}
+              {result?.resumeHint && <p className="text-xs text-amber-200/90">📎 {result.resumeHint}</p>}
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Subject</label>
+                <input className="input-field" value={draftSubject} onChange={(e) => { setDraftSubject(e.target.value); setConfirmed(false); }} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Body</label>
+                <textarea className="input-field" rows={12} value={draftBody} onChange={(e) => { setDraftBody(e.target.value); setConfirmed(false); }} />
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={() => {
+                    onGenerated({
+                      subject: draftSubject,
+                      body: draftBody,
+                      recipient: { name: recipientName, email: recipientEmail, company, role: roleTitle },
+                    });
+                    setConfirmed(true);
+                  }}
+                  className="btn-primary flex items-center justify-center gap-1.5"
+                >
+                  ✓ Use this email
+                </button>
+                <button
+                  onClick={() => { setHasDraft(false); setConfirmed(false); }}
+                  className="px-4 py-2 rounded-lg border border-slate-700 bg-slate-800/50 text-slate-300 text-sm hover:bg-slate-700 transition"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={generate}
+                  disabled={busy}
+                  className="px-4 py-2 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-200 text-sm hover:bg-violet-500/20 transition disabled:opacity-50"
+                >
+                  ↻ Regenerate
+                </button>
+              </div>
+              {confirmed && (
+                <p className="text-xs text-emerald-300">
+                  Loaded into the email step — press Save &amp; Continue below, then send from the Send step.
+                </p>
+              )}
+              <p className="text-[11px] text-slate-500">
+                Written by {result?.provider === "groq" ? "Groq (backup — Gemini was unavailable)" : "Gemini"}
+                {result?.format ? ` · ${FORMAT_LABELS[result.format] || result.format}` : ""}
+                {typeof result?.sentToday === "number" ? ` · ${result.sentToday}/${result.dailyCap} sends today` : ""}
               </p>
             </div>
           )}

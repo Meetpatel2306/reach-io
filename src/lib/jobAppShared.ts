@@ -63,9 +63,14 @@ export interface SendRecord {
   isFollowUp: boolean;
   followUpDone: boolean;
   // RFC-2822 Message-ID + Gmail thread id of the sent message — lets the
-  // one-click follow-up reply inside the same thread instead of starting a new one.
+  // one-click follow-up reply inside the same thread instead of starting a new
+  // one, and lets the reply check watch ONLY this thread.
   messageId?: string;
   threadId?: string;
+  // Set when the recipient replied to this specific email — moves the contact
+  // from the follow-up list to the responses list.
+  replied?: boolean;
+  repliedAt?: string;
   error?: string;
 }
 
@@ -191,12 +196,26 @@ export function followUpsDue(history: SendRecord[], thresholdDays = FOLLOW_UP_DA
   const due: FollowUpEntry[] = [];
   const now = Date.now();
   for (const r of latestByEmail.values()) {
-    if (r.isFollowUp || r.followUpDone) continue;
+    if (r.isFollowUp || r.followUpDone || r.replied) continue;
     const days = Math.floor((now - new Date(r.sentAt).getTime()) / (1000 * 60 * 60 * 24));
     if (days >= thresholdDays) due.push({ ...r, daysSinceSent: days });
   }
   due.sort((a, b) => b.daysSinceSent - a.daysSinceSent);
   return due;
+}
+
+// Contacts who replied — one entry per email, newest reply first.
+export function respondedList(history: SendRecord[]): SendRecord[] {
+  const byEmail = new Map<string, SendRecord>();
+  for (const r of history) {
+    if (!r.replied) continue;
+    const key = r.contactEmail.toLowerCase();
+    const prev = byEmail.get(key);
+    if (!prev || (r.repliedAt || r.sentAt) > (prev.repliedAt || prev.sentAt)) byEmail.set(key, r);
+  }
+  return [...byEmail.values()].sort((a, b) =>
+    (a.repliedAt || a.sentAt) < (b.repliedAt || b.sentAt) ? 1 : -1,
+  );
 }
 
 export function alreadyContacted(history: SendRecord[], email: string, withinDays = 14): SendRecord[] {
