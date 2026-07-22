@@ -18,9 +18,16 @@ export interface AiDraft {
 interface Result {
   provider: string;
   reason: string;
+  format?: string;
   sentToday?: number;
   dailyCap?: number;
 }
+
+const FORMAT_LABELS: Record<string, string> = {
+  ai: "AI Engineer template",
+  backend: "Python Developer template",
+  fixed: "minimal format",
+};
 
 export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) => void }) {
   const [open, setOpen] = useState(true);
@@ -30,6 +37,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
   const [recipientTitle, setRecipientTitle] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
   const [jdText, setJdText] = useState("");
+  const [format, setFormat] = useState("auto");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [blocks, setBlocks] = useState<string[]>([]);
@@ -41,7 +49,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
       const res = await fetch("/api/ai/personalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company, roleTitle, recipientName, recipientTitle, recipientEmail, jdText }),
+        body: JSON.stringify({ company, roleTitle, recipientName, recipientTitle, recipientEmail, jdText, format }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
@@ -49,7 +57,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
         setBlocks(data.blockReasons || ["Blocked."]);
         return;
       }
-      setResult({ provider: data.provider, reason: data.reason, sentToday: data.sentToday, dailyCap: data.dailyCap });
+      setResult({ provider: data.provider, reason: data.reason, format: data.format, sentToday: data.sentToday, dailyCap: data.dailyCap });
       onGenerated({
         subject: data.subject,
         body: data.body,
@@ -106,6 +114,16 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
           </div>
 
           <div>
+            <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Email format</label>
+            <select className="input-field" value={format} onChange={(e) => setFormat(e.target.value)}>
+              <option value="auto">Auto — pick from the job description (recommended)</option>
+              <option value="ai">AI Engineer template</option>
+              <option value="backend">Python Developer template</option>
+              <option value="fixed">Minimal (short generic format)</option>
+            </select>
+          </div>
+
+          <div>
             <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Job description *</label>
             <textarea
               className="input-field"
@@ -146,6 +164,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
               {result.reason && <p className="text-xs text-emerald-200/80">Why this angle: {result.reason}</p>}
               <p className="text-[11px] text-emerald-200/60">
                 Written by {result.provider === "groq" ? "Groq (backup — Gemini was unavailable)" : "Gemini"}
+                {result.format ? ` · ${FORMAT_LABELS[result.format] || result.format}` : ""}
                 {typeof result.sentToday === "number" ? ` · ${result.sentToday}/${result.dailyCap} sends today` : ""}
               </p>
             </div>

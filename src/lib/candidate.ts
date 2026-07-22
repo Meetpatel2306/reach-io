@@ -90,6 +90,52 @@ ${SIGNATURE}
 Resume attached.`;
 }
 
+// The two role-positioned formats from the outreach kit (sections 0a / 0b).
+// Same contract as renderOutreachBody: the AI supplies only the hook — every
+// other sentence is fixed and true.
+export type EmailFormat = "ai" | "backend" | "fixed";
+
+export function renderRoleTemplateBody(format: "ai" | "backend", opts: {
+  recipientFirstName: string;
+  hook: string;
+}): string {
+  if (format === "ai") {
+    return `Hi ${opts.recipientFirstName},
+
+${opts.hook}
+
+I build LLM agents that run in production, not demos. At NETAI I own our network-operations agent: a ReAct loop that plans over 30+ typed tools served through MCP servers, streams results to the UI over SSE, and runs against OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface. I also built the FAISS RAG pipeline and the FastAPI/Kafka/ClickHouse backend underneath it.
+
+A year of this, and I'd like to do it somewhere the agent is the product.
+
+Are you hiring? Resume attached.
+
+${SIGNATURE}`;
+  }
+  return `Hi ${opts.recipientFirstName},
+
+${opts.hook}
+
+I'm a backend engineer at NETAI. Two systems I own:
+
+- A real-time alerting pipeline — Alertmanager → Kafka → idempotent Python consumers → ClickHouse — sustaining thousands of alerts/day at sub-5-second end-to-end latency, with live WebSocket push to the ops UI.
+- A centralised RADIUS (AAA) service, plus site-scoped RBAC for multi-tenant permissions across the platform.
+
+I've also written a TR-069/CWMP auto-configuration server from scratch and an Ed25519-signed offline licensing system.
+
+Are you hiring for backend? Resume attached.
+
+${SIGNATURE}`;
+}
+
+// AI-focused projects lead with the AI Engineer positioning; everything else
+// leads with the backend positioning.
+const AI_PROJECT_IDS = new Set(["mcp_agent", "rag_pdf"]);
+
+export function pickFormatForProject(leadProjectId: string): "ai" | "backend" {
+  return AI_PROJECT_IDS.has(leadProjectId) ? "ai" : "backend";
+}
+
 // Fixed follow-up copy (outreach kit, section F). Sent as a reply in the same
 // thread — subject becomes "Re: <original subject>".
 export function renderFollowUpBody(opts: { recipientFirstName: string; company: string }): string {

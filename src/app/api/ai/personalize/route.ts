@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/app/api/jobs/_helpers";
 import { generatePersonalization } from "@/lib/ai";
-import { GENERIC_INBOX, getProject, renderOutreachBody } from "@/lib/candidate";
+import { GENERIC_INBOX, getProject, pickFormatForProject, renderOutreachBody, renderRoleTemplateBody } from "@/lib/candidate";
 import { deriveFirstName, listHistory } from "@/lib/jobApp";
 
 // POST /api/ai/personalize
@@ -28,6 +28,12 @@ export async function POST(req: NextRequest) {
     const recipientName = String(body.recipientName || "").trim();
     const recipientTitle = String(body.recipientTitle || "").trim();
     const recipientEmail = String(body.recipientEmail || "").trim().toLowerCase();
+    // Which body format to render around the AI's hook:
+    //   "auto"    — pick AI-Engineer vs Python-Developer from the AI's project choice
+    //   "ai"      — AI Engineer template (outreach kit 0a)
+    //   "backend" — Python Developer template (outreach kit 0b)
+    //   "fixed"   — the minimal fixed body (gemini_prompt.md section 5)
+    const requestedFormat = String(body.format || "auto");
 
     if (!company) return NextResponse.json({ error: "Company name is required." }, { status: 400 });
     if (!jdText || jdText.length < 80) {
@@ -95,12 +101,19 @@ export async function POST(req: NextRequest) {
     const secondProject = ai.second_project_id ? getProject(ai.second_project_id) : null;
     const firstName = deriveFirstName(recipientName, recipientEmail);
 
-    const rendered = renderOutreachBody({
-      recipientFirstName: firstName,
-      hook: ai.hook,
-      leadProject,
-      secondProject,
-    });
+    const format: "ai" | "backend" | "fixed" =
+      requestedFormat === "ai" || requestedFormat === "backend" || requestedFormat === "fixed"
+        ? requestedFormat
+        : pickFormatForProject(leadProject.id);
+
+    const rendered = format === "fixed"
+      ? renderOutreachBody({
+          recipientFirstName: firstName,
+          hook: ai.hook,
+          leadProject,
+          secondProject,
+        })
+      : renderRoleTemplateBody(format, { recipientFirstName: firstName, hook: ai.hook });
 
     // Template-integrity check: nothing bracketed or unrendered may survive.
     if (/[\[\]]|\{\{/.test(rendered) || /[\[\]]|\{\{/.test(ai.subject)) {
@@ -118,6 +131,7 @@ export async function POST(req: NextRequest) {
       reason: ai.reason,
       confidence: ai.confidence,
       provider: ai.provider,
+      format,
       leadProject: leadProject.id,
       sentToday,
       dailyCap: DAILY_CAP,
