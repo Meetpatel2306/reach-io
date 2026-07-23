@@ -5,6 +5,7 @@
 // that output (see candidate.ts), which keeps every claim true.
 
 import { CANDIDATE_FACTS } from "./candidate";
+import { geminiGenerate, geminiTextFrom } from "./gemini";
 
 export interface AiPersonalization {
   subject: string;
@@ -181,30 +182,20 @@ function parseModelJson(text: string): ParsedOutput {
 }
 
 async function callGemini(input: AiInput, apiKey: string): Promise<ParsedOutput> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-      contents: [{ role: "user", parts: [{ text: buildUserMessage(input) }] }],
-      generationConfig: {
-        temperature: 0.4,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        // The output is a tiny JSON object — thinking adds seconds of latency
-        // for no quality gain on this task. 0 disables it (2.5-flash supports this).
-        thinkingConfig: { thinkingBudget: 0 },
-        maxOutputTokens: 512,
-      },
-    }),
+  const { data } = await geminiGenerate(apiKey, {
+    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+    contents: [{ role: "user", parts: [{ text: buildUserMessage(input) }] }],
+    generationConfig: {
+      temperature: 0.4,
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
+      // The output is a tiny JSON object — thinking adds seconds of latency
+      // for no quality gain here. Stripped automatically for non-2.5 models.
+      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: 512,
+    },
   });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const text: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const text = geminiTextFrom(data);
   if (!text) throw new Error("Gemini returned no text");
   return parseModelJson(text);
 }

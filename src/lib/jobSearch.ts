@@ -3,6 +3,8 @@
 // Google searches server-side). Backup: Groq "compound" (its web-search model).
 // Both are asked for strict JSON; we validate and keep only rows with a real link.
 
+import { geminiGenerate, geminiTextFrom } from "./gemini";
+
 export interface FoundJob {
   company: string;
   role: string;
@@ -59,39 +61,44 @@ function extractJson<T>(text: string): T {
 }
 
 async function geminiGroundedSearch(prompt: string, apiKey: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      tools: [{ google_search: {} }],
-      generationConfig: { temperature: 0.2 },
-    }),
+  const { data } = await geminiGenerate(apiKey, {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.2 },
   });
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  const parts: { text?: string }[] = data?.candidates?.[0]?.content?.parts || [];
-  const text = parts.map((p) => p.text || "").join("");
+  const text = geminiTextFrom(data);
   if (!text) throw new Error("Gemini returned no text");
   return text;
 }
 
+// Groq's web-search models, tried in order — the full compound rejects some
+// requests on the free tier (413 request_too_large), the mini usually accepts.
+const GROQ_SEARCH_MODELS = ["groq/compound", "groq/compound-mini"];
+
 async function groqCompoundSearch(prompt: string, apiKey: string): Promise<string> {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "groq/compound",
-      temperature: 0.2,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  const text: string | undefined = data?.choices?.[0]?.message?.content;
-  if (!text) throw new Error("Groq returned no text");
-  return text;
+  let lastErr = "";
+  for (const model of GROQ_SEARCH_MODELS) {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text: string | undefined = data?.choices?.[0]?.message?.content;
+      if (!text) throw new Error("Groq returned no text");
+      return text;
+    }
+    const errText = await res.text();
+    lastErr = `Groq ${res.status} (${model}): ${errText.slice(0, 160)}`;
+    // 413 too large / 404 unknown model → try the smaller model; else real error.
+    if (res.status !== 413 && res.status !== 404 && res.status !== 400) throw new Error(lastErr);
+  }
+  throw new Error(lastErr);
 }
 
 // Run a prompt through Gemini-with-search first, Groq compound as backup.
