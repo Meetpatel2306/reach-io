@@ -1445,35 +1445,36 @@ export default function Home() {
                 <h2 className="text-lg font-semibold text-white">Email Content</h2>
               </div>
 
-              {/* Two ways to write the email — always visible. Switching while a
-                  saved email exists reopens the editor in the chosen mode. */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
+              {/* Mode toggle — OFF = dynamic AI draft, ON = saved templates.
+                  Flipping it while a saved email exists reopens the editor. */}
+              <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/5 px-4 py-3 mb-4">
+                <div className={`flex items-center gap-1.5 text-sm font-semibold transition ${composeMode === "ai" ? "text-violet-200" : "text-slate-500"}`}>
+                  <Sparkles size={15} className={composeMode === "ai" ? "text-violet-400" : "text-slate-600"} />
+                  <span>AI writes it</span>
+                  <span className="hidden sm:inline text-[11px] font-normal text-slate-500">· dynamic, from the job description</span>
+                </div>
                 <button
-                  onClick={() => { setComposeMode("ai"); if (emailSaved) unsaveEmail(); }}
-                  className={`rounded-xl border p-3 text-left transition ${
-                    composeMode === "ai"
-                      ? "border-violet-500/60 bg-violet-500/15"
-                      : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
+                  role="switch"
+                  aria-checked={composeMode === "template"}
+                  onClick={() => {
+                    setComposeMode(composeMode === "template" ? "ai" : "template");
+                    if (emailSaved) unsaveEmail();
+                  }}
+                  className={`relative w-12 h-6 rounded-full transition-colors shrink-0 mx-3 ${
+                    composeMode === "template" ? "bg-gradient-to-r from-violet-500 to-indigo-500" : "bg-slate-700"
                   }`}
+                  title={composeMode === "template" ? "Using your templates — switch off for AI" : "AI mode — switch on to use your templates"}
                 >
-                  <p className="text-sm font-semibold text-white flex items-center gap-1.5">
-                    <Sparkles size={15} className="text-violet-400" /> AI writes it
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Dynamic — personalised from the job description</p>
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
+                      composeMode === "template" ? "left-6" : "left-0.5"
+                    }`}
+                  />
                 </button>
-                <button
-                  onClick={() => { setComposeMode("template"); if (emailSaved) unsaveEmail(); }}
-                  className={`rounded-xl border p-3 text-left transition ${
-                    composeMode === "template"
-                      ? "border-violet-500/60 bg-violet-500/15"
-                      : "border-slate-700 bg-slate-800/40 hover:bg-slate-800"
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-white flex items-center gap-1.5">
-                    <FileText size={15} className="text-violet-400" /> My templates
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Static — pick a saved template and edit</p>
-                </button>
+                <div className={`flex items-center gap-1.5 text-sm font-semibold transition ${composeMode === "template" ? "text-violet-200" : "text-slate-500"}`}>
+                  <FileText size={15} className={composeMode === "template" ? "text-violet-400" : "text-slate-600"} />
+                  <span>My templates</span>
+                </div>
               </div>
 
               {emailSaved ? (
