@@ -1736,9 +1736,18 @@ export default function Home() {
           {/* Step 4: Send */}
           {currentStep === 4 && (
             <div className="glass-card">
-              <div className="flex items-center gap-2 mb-4">
-                <Send size={20} className="text-violet-400" />
-                <h2 className="text-lg font-semibold text-white">Send Emails</h2>
+              <div className="flex items-center justify-between gap-2 mb-4">
+                <div className="flex items-center gap-2">
+                  <Send size={20} className="text-violet-400" />
+                  <h2 className="text-lg font-semibold text-white">Send Emails</h2>
+                </div>
+                <button
+                  onClick={() => { setComposeMode("ai"); unsaveEmail(); setCurrentStep(2); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-200 text-xs hover:bg-violet-500/20 transition"
+                  title="Go back to the Email step and write a fresh AI-personalised draft"
+                >
+                  <Sparkles size={13} /> Rewrite with AI
+                </button>
               </div>
 
               <div className="grid grid-cols-3 gap-3 mb-5">
