@@ -16,6 +16,7 @@ import { startOAuth } from "@/lib/oauth";
 import { syncCurrentUser, clearUserData } from "@/lib/session-storage";
 import { TemplatePicker } from "@/components/jobs/TemplatePicker";
 import { AiPersonalize } from "@/components/jobs/AiPersonalize";
+import { COMPOSE_MODE_EVENT, getComposeMode, setComposeModeGlobal } from "@/components/AppNav";
 import { ResumesPicker } from "@/components/jobs/ResumesPicker";
 import { SavedSlotsBar } from "@/components/jobs/SavedSlotsBar";
 import { RecipientHistoryBadge, useRecipientHistoryIndex } from "@/components/jobs/RecipientHistoryBadge";
@@ -165,8 +166,24 @@ export default function Home() {
   const [isIOS, setIsIOS] = useState(false);
   const [showIOSInstall, setShowIOSInstall] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
-  // Email step mode: "ai" = dynamic AI-personalised draft, "template" = static templates.
+  // Email step mode: "ai" = dynamic AI-personalised draft, "template" = static
+  // templates. Controlled by the GLOBAL toggle in the fixed nav (synced via
+  // localStorage + CustomEvent), not by any per-page control.
   const [composeMode, setComposeMode] = useState<"ai" | "template">("ai");
+  useEffect(() => {
+    setComposeMode(getComposeMode());
+    const onMode = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail !== "ai" && detail !== "template") return;
+      setComposeMode(detail);
+      // Flipping the global toggle signals "I want to write differently" —
+      // reopen the email editor in the chosen mode.
+      setEmailSaved(false);
+      setCurrentStep(2);
+    };
+    window.addEventListener(COMPOSE_MODE_EVENT, onMode);
+    return () => window.removeEventListener(COMPOSE_MODE_EVENT, onMode);
+  }, []);
 
   // Per-recipient history lookup (loads localStorage history once and indexes by email)
   const recipientHistoryIndex = useRecipientHistoryIndex();
@@ -1445,36 +1462,16 @@ export default function Home() {
                 <h2 className="text-lg font-semibold text-white">Email Content</h2>
               </div>
 
-              {/* Mode toggle — OFF = dynamic AI draft, ON = saved templates.
-                  Flipping it while a saved email exists reopens the editor. */}
-              <div className="flex items-center justify-between rounded-xl border border-violet-500/25 bg-violet-500/5 px-4 py-3 mb-4">
-                <div className={`flex items-center gap-1.5 text-sm font-semibold transition ${composeMode === "ai" ? "text-violet-200" : "text-slate-500"}`}>
-                  <Sparkles size={15} className={composeMode === "ai" ? "text-violet-400" : "text-slate-600"} />
-                  <span>AI writes it</span>
-                  <span className="hidden sm:inline text-[11px] font-normal text-slate-500">· dynamic, from the job description</span>
-                </div>
-                <button
-                  role="switch"
-                  aria-checked={composeMode === "template"}
-                  onClick={() => {
-                    setComposeMode(composeMode === "template" ? "ai" : "template");
-                    if (emailSaved) unsaveEmail();
-                  }}
-                  className={`relative w-12 h-6 rounded-full transition-colors shrink-0 mx-3 ${
-                    composeMode === "template" ? "bg-gradient-to-r from-violet-500 to-indigo-500" : "bg-slate-700"
-                  }`}
-                  title={composeMode === "template" ? "Using your templates — switch off for AI" : "AI mode — switch on to use your templates"}
-                >
-                  <span
-                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${
-                      composeMode === "template" ? "left-6" : "left-0.5"
-                    }`}
-                  />
-                </button>
-                <div className={`flex items-center gap-1.5 text-sm font-semibold transition ${composeMode === "template" ? "text-violet-200" : "text-slate-500"}`}>
-                  <FileText size={15} className={composeMode === "template" ? "text-violet-400" : "text-slate-600"} />
-                  <span>My templates</span>
-                </div>
+              {/* Mode banner — the actual toggle lives globally in the top nav. */}
+              <div className="flex items-center gap-2 rounded-xl border border-violet-500/25 bg-violet-500/5 px-4 py-2.5 mb-4">
+                {composeMode === "ai"
+                  ? <Sparkles size={14} className="text-violet-400 shrink-0" />
+                  : <FileText size={14} className="text-violet-400 shrink-0" />}
+                <p className="text-xs text-slate-300">
+                  {composeMode === "ai"
+                    ? <><span className="font-semibold text-violet-200">AI mode</span> — dynamic draft, personalised per job. Use the switch in the top bar to change to your templates.</>
+                    : <><span className="font-semibold text-violet-200">Templates mode</span> — your saved templates. Use the switch in the top bar to change to AI drafts.</>}
+                </p>
               </div>
 
               {emailSaved ? (
@@ -1742,7 +1739,7 @@ export default function Home() {
                   <h2 className="text-lg font-semibold text-white">Send Emails</h2>
                 </div>
                 <button
-                  onClick={() => { setComposeMode("ai"); unsaveEmail(); setCurrentStep(2); }}
+                  onClick={() => { setComposeModeGlobal("ai"); }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-200 text-xs hover:bg-violet-500/20 transition"
                   title="Go back to the Email step and write a fresh AI-personalised draft"
                 >

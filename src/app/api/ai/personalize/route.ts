@@ -36,12 +36,9 @@ export async function POST(req: NextRequest) {
     const requestedFormat = String(body.format || "auto");
 
     if (!company) return NextResponse.json({ error: "Company name is required." }, { status: 400 });
-    if (!jdText || jdText.length < 80) {
-      return NextResponse.json(
-        { error: "Paste the job description (at least a few sentences) — the AI personalises from it." },
-        { status: 400 },
-      );
-    }
+    // JD is optional: with a real JD the AI writes a personalised hook; without
+    // one we instantly render the matching template as-is (no hook, no AI call).
+    const hasJd = jdText.length >= 80;
 
     // ---- Hard block rules (checked before spending an AI call) ----
     const blocks: string[] = [];
@@ -81,6 +78,36 @@ export async function POST(req: NextRequest) {
 
     if (blocks.length) {
       return NextResponse.json({ blocked: true, blockReasons: blocks });
+    }
+
+    // ---- No JD: instant template draft, no AI call ----
+    if (!hasJd) {
+      const roleLooksAi = /\b(ai|ml|machine|llm|genai|generative|agent|agentic|rag|nlp|data scien|deep|intelligen|prompt)\w*/i.test(roleTitle);
+      const format: "ai" | "backend" | "fixed" =
+        requestedFormat === "ai" || requestedFormat === "backend" || requestedFormat === "fixed"
+          ? requestedFormat
+          : roleLooksAi ? "ai" : "backend";
+      const fmt = format === "fixed" ? (roleLooksAi ? "ai" : "backend") : format;
+      const body = renderRoleTemplateBody(fmt, { recipientName, recipientEmail, hook: "" });
+      const subject = fmt === "ai"
+        ? "AI Engineer — production LLM agent over 30+ tools"
+        : "Python/FastAPI engineer — Kafka→ClickHouse at sub-5s latency";
+      const todaySent = sentToday;
+      return NextResponse.json({
+        subject,
+        body,
+        hook: "",
+        reason: "No job description given, so this is your template as-is — paste the JD next time for a personalised opening line.",
+        confidence: "high",
+        provider: "template",
+        format: fmt,
+        resumeHint: fmt === "backend"
+          ? "Attach your Python/Backend resume for this one."
+          : "Attach your AI Engineer resume (Meet_Patel_AI_Engineer.pdf) for this one.",
+        leadProject: fmt === "ai" ? "mcp_agent" : "alerting",
+        sentToday: todaySent,
+        dailyCap: DAILY_CAP,
+      });
     }
 
     // ---- AI call: Gemini primary, Groq fallback ----

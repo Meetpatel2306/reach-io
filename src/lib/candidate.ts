@@ -102,9 +102,8 @@ export function renderOutreachBody(opts: {
   const second = opts.secondProject && opts.secondProject.id !== opts.leadProject.id
     ? `\nI also built ${opts.secondProject.summary}.`
     : "";
-  return `${greetingLine(opts.recipientName, opts.recipientEmail)}
-
-${opts.hook}
+  const hookBlock = opts.hook ? `\n\n${opts.hook}` : "";
+  return `${greetingLine(opts.recipientName, opts.recipientEmail)}${hookBlock}
 
 I build systems that run in production, not demos. At NETAI I own ${opts.leadProject.summary}.${second}
 
@@ -127,10 +126,9 @@ export function renderRoleTemplateBody(format: "ai" | "backend", opts: {
   hook: string;
 }): string {
   const greeting = greetingLine(opts.recipientName, opts.recipientEmail);
+  const hookBlock = opts.hook ? `\n\n${opts.hook}` : "";
   if (format === "ai") {
-    return `${greeting}
-
-${opts.hook}
+    return `${greeting}${hookBlock}
 
 I build LLM agents that run in production, not demos. At NETAI I own our network-operations agent: a ReAct loop that plans over 30+ typed tools served through MCP servers, streams results to the UI over SSE, and runs against OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface. I also built the FAISS RAG pipeline and the FastAPI/Kafka/ClickHouse backend underneath it.
 
@@ -140,9 +138,7 @@ Are you hiring? Resume attached.
 
 ${SIGNATURE}`;
   }
-  return `${greeting}
-
-${opts.hook}
+  return `${greeting}${hookBlock}
 
 I'm a backend engineer at NETAI. Two systems I own:
 

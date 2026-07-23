@@ -117,19 +117,19 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
           </div>
 
           <div>
-            <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Job description *</label>
+            <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Job description (optional)</label>
             <textarea
               className="input-field"
               rows={6}
               value={jdText}
               onChange={(e) => setJdText(e.target.value)}
-              placeholder="Paste the full job description here — the more company-specific text, the better the hook."
+              placeholder="Paste the job description for an AI-personalised opening line. Leave empty to get your matching template instantly."
             />
           </div>
 
           <button
             onClick={generate}
-            disabled={busy || !company.trim() || jdText.trim().length < 80}
+            disabled={busy || !company.trim()}
             className="btn-primary flex items-center gap-2 disabled:opacity-50"
           >
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
@@ -199,7 +199,7 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
                 </p>
               )}
               <p className="text-[11px] text-slate-500">
-                Written by {result?.provider === "groq" ? "Groq (backup — Gemini was unavailable)" : "Gemini"}
+                Written by {result?.provider === "template" ? "your template (instant — no JD given)" : result?.provider === "groq" ? "Groq (backup — Gemini was unavailable)" : "Gemini"}
                 {result?.format ? ` · ${FORMAT_LABELS[result.format] || result.format}` : ""}
                 {typeof result?.sentToday === "number" ? ` · ${result.sentToday}/${result.dailyCap} sends today` : ""}
               </p>
