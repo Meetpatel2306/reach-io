@@ -20,15 +20,19 @@ export interface FoundJob {
   source: string;
 }
 
-const SEARCH_PROMPT = (query: string, location: string) => `Search Google for REAL job postings that are currently open and match:
+const SEARCH_PROMPT = (query: string, location: string) => `Use your web search tool NOW — do not answer from memory and do not say you cannot search. Run multiple searches for REAL job postings that are currently open and match:
 
 ROLE QUERY: ${query}
 LOCATION: ${location || "India or Remote"}
 
+Interpret EXPERIENCE broadly: if the query says "1 year experience", include postings asking for 0-1, 0-2, 1-2, 1-3 years, "fresher", "junior" or "entry level" — any posting a person with that experience could apply to. Same logic for other experience values.
+
+Interpret LOCATION helpfully: prefer ${location || "India"}, but when the city has few results also include Remote (India) and hybrid roles in nearby major cities.
+
 Rules:
 - Only genuine postings from company career pages, ATS boards (Greenhouse, Lever, Ashby, Workable, SmartRecruiters), Wellfound, or reputable job boards. NO staffing agencies, NO consultancies, NO "urgent hiring" spam.
-- Prefer postings from the last 7 days.
-- Find 6-10 jobs.
+- Prefer recent postings (last 14 days).
+- Find 6-10 jobs. Every job MUST have a working http(s) link.
 - For each job also try to find the company's own careers page URL, and a public hiring/contact email or phone if one exists — use "" when not found. Never invent contact details.
 
 Return ONLY a JSON array (no markdown, no commentary). Each element exactly:
@@ -103,7 +107,9 @@ async function groqJsonify(rawText: string, apiKey: string): Promise<string> {
 async function groqCompoundSearch(prompt: string, apiKey: string): Promise<string> {
   let lastErr = "";
   let proseAnswer = "";
-  for (const model of ["groq/compound-mini", "groq/compound-mini", "groq/compound"]) {
+  // Mini refuses to search on some calls — give it three chances (each refusal
+  // is only a few seconds) before the big compound, which 413s on some tiers.
+  for (const model of ["groq/compound-mini", "groq/compound-mini", "groq/compound-mini", "groq/compound"]) {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -122,9 +128,11 @@ async function groqCompoundSearch(prompt: string, apiKey: string): Promise<strin
     }
     const data = await res.json();
     const text: string = data?.choices?.[0]?.message?.content || "";
-    if (/[\[{]/.test(text)) return text;
-    if (text.length > 100) proseAnswer = text; // real searched content, wrong shape
-    lastErr = `Groq (${model}) answered without JSON`;
+    // A refusal ("I can't search the web") has no URLs — retry, never accept it.
+    const searched = /https?:\/\//i.test(text);
+    if (searched && /[\[{]/.test(text)) return text;
+    if (searched) proseAnswer = text; // real searched content, wrong shape
+    lastErr = searched ? `Groq (${model}) answered without JSON` : `Groq (${model}) skipped its web search`;
   }
   // Salvage: the search worked but came back as prose — restructure it.
   if (proseAnswer) return groqJsonify(proseAnswer, apiKey);
@@ -183,8 +191,14 @@ export async function searchJobs(query: string, location: string): Promise<{ job
       postedWhen: cleanStr(o.postedWhen, 60),
       source: cleanStr(o.source, 120),
     };
-    // A job without a company or a real link is noise.
-    if (!job.company || !/^https?:\/\//i.test(job.applyLink)) continue;
+    // A job without a company or any real link is noise — but if only the
+    // apply link is missing and we have the career page, use that instead of
+    // throwing the whole row away.
+    if (!job.company) continue;
+    if (!/^https?:\/\//i.test(job.applyLink)) {
+      if (/^https?:\/\//i.test(job.careerPage)) job.applyLink = job.careerPage;
+      else continue;
+    }
     jobs.push(job);
   }
   return { jobs, provider };
