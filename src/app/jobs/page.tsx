@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Search, Loader2, Briefcase, ExternalLink, Trash2, Pencil, Check, X,
-  Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles,
+  Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck,
 } from "lucide-react";
 import type { JobLead, LeadStatus } from "@/lib/jobLeads";
 
@@ -17,6 +17,47 @@ const STATUS_OPTIONS: { value: LeadStatus; label: string; cls: string }[] = [
   { value: "interview", label: "Interview", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30" },
   { value: "rejected", label: "Rejected", cls: "bg-red-500/15 text-red-300 border-red-500/30" },
 ];
+
+// One lead as clean, pasteable text — used by row copy and copy-all.
+function formatLead(l: JobLead): string {
+  const lines = [
+    `Company: ${l.company}`,
+    `Role: ${l.role}`,
+    l.experience ? `Experience: ${l.experience}` : "",
+    l.package ? `Package: ${l.package}` : "",
+    l.location ? `Location: ${l.location}` : "",
+    l.postedWhen ? `Posted: ${l.postedWhen}` : "",
+    l.jd ? `About: ${l.jd}` : "",
+    `Apply: ${l.applyLink}`,
+    l.careerPage ? `Career page: ${l.careerPage}` : "",
+    l.contactEmail ? `Email: ${l.contactEmail}` : "",
+    l.contactPhone ? `Phone: ${l.contactPhone}` : "",
+    l.source ? `Source: ${l.source}` : "",
+    `Status: ${l.status}`,
+    l.notes ? `Notes: ${l.notes}` : "",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older/insecure contexts: fall back to a hidden textarea.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
 
 const EDIT_FIELDS: { key: keyof JobLead; label: string; wide?: boolean }[] = [
   { key: "company", label: "Company" },
@@ -47,6 +88,21 @@ export default function JobsPage() {
   const [draft, setDraft] = useState<Partial<JobLead>>({});
   const [contactBusyId, setContactBusyId] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
+  const [copiedId, setCopiedId] = useState("");
+
+  async function copyLead(l: JobLead) {
+    if (await copyText(formatLead(l))) {
+      setCopiedId(l.id);
+      setTimeout(() => setCopiedId(""), 1500);
+    }
+  }
+
+  async function copyAllVisible(list: JobLead[]) {
+    if (await copyText(list.map(formatLead).join("\n\n———\n\n"))) {
+      setCopiedId("__all__");
+      setTimeout(() => setCopiedId(""), 1500);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/job-search", { cache: "no-store" })
@@ -202,6 +258,17 @@ export default function JobsPage() {
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-2">
+        {visible.length > 0 && (
+          <button
+            onClick={() => copyAllVisible(visible)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-teal-300 border border-teal-500/25 bg-teal-500/5 hover:bg-teal-500/15 transition"
+            title="Copy every visible job as text"
+          >
+            {copiedId === "__all__" ? <ClipboardCheck size={12} /> : <Copy size={12} />}
+            {copiedId === "__all__" ? "Copied!" : `Copy all (${visible.length})`}
+          </button>
+        )}
         {leads.length > 0 && (
           confirmClear ? (
             <span className="flex items-center gap-2 text-xs">
@@ -215,6 +282,7 @@ export default function JobsPage() {
             </button>
           )
         )}
+        </div>
       </div>
 
       {/* Leads table */}
@@ -238,7 +306,26 @@ export default function JobsPage() {
                   <th className="px-3 py-3">Experience</th>
                   <th className="px-3 py-3">Package</th>
                   <th className="px-3 py-3">Location</th>
-                  <th className="px-3 py-3">Contact</th>
+                  <th className="px-3 py-3">
+                    <span className="inline-flex items-center gap-1.5">
+                      Contact
+                      {visible.some((l) => l.contactEmail) && (
+                        <button
+                          onClick={async () => {
+                            const emails = [...new Set(visible.map((l) => l.contactEmail).filter(Boolean))];
+                            if (await copyText(emails.join("\n"))) {
+                              setCopiedId("__emails__");
+                              setTimeout(() => setCopiedId(""), 1500);
+                            }
+                          }}
+                          title="Copy all emails from the listed jobs"
+                          className={`p-1 rounded border transition normal-case ${copiedId === "__emails__" ? "border-teal-500/50 text-teal-300" : "border-slate-700 text-slate-500 hover:text-teal-300 hover:border-teal-500/40"}`}
+                        >
+                          {copiedId === "__emails__" ? <ClipboardCheck size={11} /> : <Copy size={11} />}
+                        </button>
+                      )}
+                    </span>
+                  </th>
                   <th className="px-3 py-3">Status</th>
                   <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
@@ -253,6 +340,8 @@ export default function JobsPage() {
                     draft={draft}
                     setDraft={setDraft}
                     contactBusy={contactBusyId === l.id}
+                    copied={copiedId === l.id}
+                    onCopy={() => copyLead(l)}
                     onToggle={() => setExpandedId(expandedId === l.id ? "" : l.id)}
                     onEdit={() => startEdit(l)}
                     onSave={saveEdit}
@@ -272,8 +361,8 @@ export default function JobsPage() {
 }
 
 function JobRow({
-  lead: l, expanded, editing, draft, setDraft, contactBusy,
-  onToggle, onEdit, onSave, onCancelEdit, onDelete, onStatus, onFindContact,
+  lead: l, expanded, editing, draft, setDraft, contactBusy, copied,
+  onToggle, onEdit, onSave, onCancelEdit, onDelete, onStatus, onFindContact, onCopy,
 }: {
   lead: JobLead;
   expanded: boolean;
@@ -281,6 +370,7 @@ function JobRow({
   draft: Partial<JobLead>;
   setDraft: (d: Partial<JobLead>) => void;
   contactBusy: boolean;
+  copied: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onSave: () => void;
@@ -288,28 +378,40 @@ function JobRow({
   onDelete: () => void;
   onStatus: (s: LeadStatus) => void;
   onFindContact: () => void;
+  onCopy: () => void;
 }) {
   const status = STATUS_OPTIONS.find((s) => s.value === l.status) || STATUS_OPTIONS[0];
   return (
     <>
-      <tr className="hover:bg-slate-800/30 transition">
+      <tr
+        className="hover:bg-slate-800/30 transition cursor-pointer"
+        onClick={(e) => {
+          // The whole row toggles the detail view — except clicks on real
+          // controls (links, buttons, selects, inputs) inside it.
+          if ((e.target as HTMLElement).closest("a,button,select,input,textarea")) return;
+          onToggle();
+        }}
+      >
         <td className="px-4 py-3">
-          <button onClick={onToggle} className="text-left group">
-            <p className="font-semibold text-white group-hover:text-teal-300 transition flex items-center gap-1.5">
-              {l.company}
-              {expanded ? <ChevronUp size={13} className="text-slate-500" /> : <ChevronDown size={13} className="text-slate-500" />}
-            </p>
-            <p className="text-xs text-slate-400">{l.role}{l.postedWhen ? ` · ${l.postedWhen}` : ""}</p>
-          </button>
+          <p className="font-semibold text-white flex items-center gap-1.5">
+            {l.company}
+            {expanded ? <ChevronUp size={13} className="text-slate-500" /> : <ChevronDown size={13} className="text-slate-500" />}
+          </p>
+          <p className="text-xs text-slate-400">{l.role}{l.postedWhen ? ` · ${l.postedWhen}` : ""}</p>
         </td>
         <td className="px-3 py-3 text-slate-300 text-xs">{l.experience || "—"}</td>
         <td className="px-3 py-3 text-slate-300 text-xs">{l.package || "—"}</td>
         <td className="px-3 py-3 text-slate-300 text-xs">{l.location || "—"}</td>
         <td className="px-3 py-3 text-xs">
-          {l.contactEmail ? (
-            <span className="text-teal-300 flex items-center gap-1"><Mail size={11} />{l.contactEmail}</span>
-          ) : l.contactPhone ? (
-            <span className="text-teal-300 flex items-center gap-1"><Phone size={11} />{l.contactPhone}</span>
+          {l.contactEmail || l.contactPhone ? (
+            <button
+              onClick={() => copyText(l.contactEmail || l.contactPhone)}
+              title="Click to copy"
+              className="text-teal-300 flex items-center gap-1 hover:text-teal-200 hover:underline"
+            >
+              {l.contactEmail ? <Mail size={11} /> : <Phone size={11} />}
+              {l.contactEmail || l.contactPhone}
+            </button>
           ) : (
             <span className="text-slate-600">empty</span>
           )}
@@ -325,6 +427,12 @@ function JobRow({
         </td>
         <td className="px-3 py-3">
           <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={onCopy} title="Copy this job as text"
+              className={`p-1.5 rounded-lg border transition ${copied ? "border-teal-500/50 text-teal-300" : "border-slate-700 text-slate-400 hover:text-teal-300 hover:border-teal-500/40"}`}
+            >
+              {copied ? <ClipboardCheck size={14} /> : <Copy size={14} />}
+            </button>
             <a
               href={l.applyLink} target="_blank" rel="noopener noreferrer" title="Open posting"
               className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-teal-300 hover:border-teal-500/40 transition"
