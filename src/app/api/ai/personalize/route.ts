@@ -75,10 +75,13 @@ export async function POST(req: NextRequest) {
 
     // ---- Hard block rules (checked before spending an AI call) ----
     const blocks: string[] = [];
+    const warnings: string[] = [];
 
+    // Generic inboxes are a WARNING, not a block: job listings often publish
+    // only an hr@/careers@ address, and pasted Job Finder leads use it.
     if (recipientEmail && GENERIC_INBOX.test(recipientEmail)) {
-      blocks.push(
-        `${recipientEmail} is a generic inbox (hr@/careers@/info@...). Those are where resumes go to die — find a real person on LinkedIn instead.`,
+      warnings.push(
+        `${recipientEmail} is a shared inbox (hr@/careers@...). It works, but response rates are much higher when you also find a real person on LinkedIn.`,
       );
     }
 
@@ -140,6 +143,7 @@ export async function POST(req: NextRequest) {
         leadProject: fmt === "ai" ? "mcp_agent" : "alerting",
         sentToday: todaySent,
         dailyCap: DAILY_CAP,
+        warnings: warnings.length ? warnings : undefined,
       });
     }
 
@@ -200,6 +204,7 @@ export async function POST(req: NextRequest) {
       leadProject: leadProject.id,
       sentToday,
       dailyCap: DAILY_CAP,
+      warnings: warnings.length ? warnings : undefined,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

@@ -641,7 +641,13 @@ export default function Home() {
     addLog("Resume removed"); setCurrentStep(1);
   };
 
-  const saveEmail = () => { setEmailSaved(true); addLog("Email saved"); setCurrentStep(3); };
+  // If recipients are already set (e.g. auto-added from an AI draft with a
+  // pasted job's email), Save & Continue skips straight to the Send step.
+  const saveEmail = () => {
+    setEmailSaved(true);
+    addLog("Email saved");
+    setCurrentStep(recipients.length > 0 ? 4 : 3);
+  };
   const unsaveEmail = () => { setEmailSaved(false); setCurrentStep(2); };
 
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

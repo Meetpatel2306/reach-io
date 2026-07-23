@@ -22,6 +22,7 @@ interface Result {
   resumeHint?: string;
   sentToday?: number;
   dailyCap?: number;
+  warnings?: string[];
 }
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -29,6 +30,25 @@ const FORMAT_LABELS: Record<string, string> = {
   backend: "Python Developer template",
   fixed: "minimal format",
 };
+
+// Parse a job block copied from the Job Finder table ("Company: X\nRole: Y\n...").
+function parseJobBlock(text: string): Record<string, string> {
+  const keyMap: Record<string, string> = {
+    company: "company", role: "role", experience: "experience", package: "package",
+    location: "location", posted: "posted", about: "about", apply: "apply",
+    "career page": "careerPage", email: "email", phone: "phone", source: "source",
+  };
+  const map: Record<string, string> = {};
+  // If several jobs were pasted (copy-all), use only the first block.
+  const firstBlock = text.split(/\n\s*———+\s*\n/)[0];
+  for (const line of firstBlock.split(/\r?\n/)) {
+    const m = line.match(/^([A-Za-z ]+):\s*(.+)$/);
+    if (!m) continue;
+    const k = keyMap[m[1].trim().toLowerCase()];
+    if (k && !map[k]) map[k] = m[2].trim();
+  }
+  return map;
+}
 
 export function AiPersonalize({
   onGenerated,
@@ -47,6 +67,36 @@ export function AiPersonalize({
   const [company, setCompany] = useState("");
   const [uploadedResume, setUploadedResume] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Paste-from-Job-Finder mode: one box, auto-extracts everything.
+  const [pasteMode, setPasteMode] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteMsg, setPasteMsg] = useState("");
+
+  function loadJobBlock() {
+    const p = parseJobBlock(pasteText);
+    if (!p.company && !p.email && !p.about) {
+      setPasteMsg("Couldn't read that — paste the job exactly as copied from the Jobs page (Company:, Role:, Email:, ...).");
+      return;
+    }
+    if (p.company) setCompany(p.company);
+    if (p.role) setRoleTitle(p.role);
+    if (p.email) setRecipientEmail(p.email);
+    const jdParts = [
+      p.role ? `Role: ${p.role}` : "",
+      p.experience ? `Experience required: ${p.experience}` : "",
+      p.package ? `Package: ${p.package}` : "",
+      p.location ? `Location: ${p.location}` : "",
+      p.posted ? `Posted: ${p.posted}` : "",
+      p.about ? `\n${p.about}` : "",
+      p.careerPage ? `Careers: ${p.careerPage}` : "",
+      p.apply ? `Posting: ${p.apply}` : "",
+    ].filter(Boolean);
+    setJdText(jdParts.join("\n"));
+    setPasteMode(false);
+    setPasteMsg("");
+    setPasteText("");
+    setPasteMsg(`Loaded ${p.company || "job"}${p.email ? ` · will send to ${p.email}` : " · no email in the job — add one"}. Check the fields, then Generate.`);
+  }
   const [roleTitle, setRoleTitle] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientTitle, setRecipientTitle] = useState("");
@@ -91,7 +141,7 @@ export function AiPersonalize({
         setBlocks(data.blockReasons || ["Blocked."]);
         return;
       }
-      setResult({ provider: data.provider, reason: data.reason, format: data.format, resumeHint: data.resumeHint, sentToday: data.sentToday, dailyCap: data.dailyCap });
+      setResult({ provider: data.provider, reason: data.reason, format: data.format, resumeHint: data.resumeHint, sentToday: data.sentToday, dailyCap: data.dailyCap, warnings: data.warnings });
       setDraftSubject(data.subject);
       setDraftBody(data.body);
       setHasDraft(true);
@@ -110,6 +160,51 @@ export function AiPersonalize({
             edit it below before anything is sent.
           </p>
 
+          {/* Manual fill vs paste-a-job-from-Job-Finder */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPasteMode(false)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                !pasteMode ? "bg-violet-500/20 text-violet-200 border-violet-500/40" : "bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-800"
+              }`}
+            >
+              ✍️ Fill manually
+            </button>
+            <button
+              onClick={() => { setPasteMode(true); setPasteMsg(""); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                pasteMode ? "bg-teal-500/20 text-teal-200 border-teal-500/40" : "bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-800"
+              }`}
+            >
+              📋 Paste job from Job Finder
+            </button>
+          </div>
+
+          {pasteMsg && <p className="text-xs text-teal-300">{pasteMsg}</p>}
+
+          {pasteMode && (
+            <div className="space-y-2 rounded-xl border border-teal-500/25 bg-teal-500/5 p-3">
+              <label className="text-xs text-slate-400 block">
+                Paste a job copied from the <span className="text-teal-300">Jobs</span> page (the 📋 button there) — company, role, JD and the email fill themselves.
+              </label>
+              <textarea
+                className="input-field"
+                rows={8}
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={"Company: Infiria AI Pvt Ltd\nRole: AI Engineer\nExperience: 0-2 years\n...\nEmail: hr@infiria.ai"}
+              />
+              <button
+                onClick={loadJobBlock}
+                disabled={!pasteText.trim()}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-medium hover:opacity-90 transition disabled:opacity-40"
+              >
+                Load job data
+              </button>
+            </div>
+          )}
+
+          {!pasteMode && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Company *</label>
@@ -132,6 +227,7 @@ export function AiPersonalize({
               <input className="input-field" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} placeholder="priya@acme.ai — a real person, not hr@" />
             </div>
           </div>
+          )}
 
           <div>
             <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Email format</label>
@@ -214,6 +310,7 @@ export function AiPersonalize({
                 <span className="text-[10px] uppercase tracking-wider text-slate-500">nothing sent yet</span>
               </div>
               {result?.reason && <p className="text-xs text-slate-400">Why this angle: {result.reason}</p>}
+              {result?.warnings?.map((w, i) => <p key={i} className="text-xs text-amber-300">⚠ {w}</p>)}
               {result?.resumeHint && <p className="text-xs text-amber-200/90">📎 {result.resumeHint}</p>}
               <div>
                 <label className="text-xs text-slate-400 mb-1 block uppercase tracking-wider">Subject</label>
