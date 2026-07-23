@@ -65,6 +65,13 @@ input, textarea, [contenteditable] {
   user-select: text;
 }
 
+/* Opt-in region where normal text selection/copying works (e.g. the Job
+   Finder table — users select emails, package numbers, JD text, etc.) */
+.selectable, .selectable * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* iOS pull-to-refresh disable on standalone */
 html {
   overscroll-behavior-y: none;

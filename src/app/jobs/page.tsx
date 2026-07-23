@@ -192,7 +192,7 @@ export default function JobsPage() {
   const visible = statusFilter === "all" ? leads : leads.filter((l) => l.status === statusFilter);
 
   return (
-    <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto selectable">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center">
@@ -387,8 +387,10 @@ function JobRow({
         className="hover:bg-slate-800/30 transition cursor-pointer"
         onClick={(e) => {
           // The whole row toggles the detail view — except clicks on real
-          // controls (links, buttons, selects, inputs) inside it.
+          // controls (links, buttons, selects, inputs) inside it, and except
+          // when the user is selecting text to copy it.
           if ((e.target as HTMLElement).closest("a,button,select,input,textarea")) return;
+          if (window.getSelection()?.toString()) return;
           onToggle();
         }}
       >
