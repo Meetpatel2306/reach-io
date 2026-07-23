@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Search, Loader2, Briefcase, ExternalLink, Trash2, Pencil, Check, X,
-  Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck,
+  Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck, SendHorizonal,
 } from "lucide-react";
 import type { JobLead, LeadStatus } from "@/lib/jobLeads";
 
@@ -86,7 +86,7 @@ export default function JobsPage() {
   const [expandedId, setExpandedId] = useState("");
   const [editingId, setEditingId] = useState("");
   const [draft, setDraft] = useState<Partial<JobLead>>({});
-  const [contactBusyId, setContactBusyId] = useState("");
+  const [sendBusyId, setSendBusyId] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
   const [copiedId, setCopiedId] = useState("");
 
@@ -158,22 +158,22 @@ export default function JobsPage() {
     await fetch("/api/job-search", { method: "DELETE" });
   }
 
-  async function findContactFor(id: string) {
-    setContactBusyId(id); setError(""); setMsg("");
+  async function sendMailFor(id: string) {
+    setSendBusyId(id); setError(""); setMsg("");
     try {
-      const res = await fetch("/api/job-search/contact", {
+      const res = await fetch("/api/job-search/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Contact search failed");
+      if (!res.ok) throw new Error(data.error || "Send failed");
       if (data.lead) setLeads((prev) => prev.map((l) => (l.id === id ? data.lead : l)));
-      setMsg(data.message || "");
+      setMsg(data.message || "Sent.");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setContactBusyId("");
+      setSendBusyId("");
     }
   }
 
@@ -339,7 +339,7 @@ export default function JobsPage() {
                     editing={editingId === l.id}
                     draft={draft}
                     setDraft={setDraft}
-                    contactBusy={contactBusyId === l.id}
+                    sendBusy={sendBusyId === l.id}
                     copied={copiedId === l.id}
                     onCopy={() => copyLead(l)}
                     onToggle={() => setExpandedId(expandedId === l.id ? "" : l.id)}
@@ -348,7 +348,7 @@ export default function JobsPage() {
                     onCancelEdit={() => { setEditingId(""); setDraft({}); }}
                     onDelete={() => removeLead(l.id)}
                     onStatus={(s) => patchLead(l.id, { status: s })}
-                    onFindContact={() => findContactFor(l.id)}
+                    onSendMail={() => sendMailFor(l.id)}
                   />
                 ))}
               </tbody>
@@ -361,15 +361,15 @@ export default function JobsPage() {
 }
 
 function JobRow({
-  lead: l, expanded, editing, draft, setDraft, contactBusy, copied,
-  onToggle, onEdit, onSave, onCancelEdit, onDelete, onStatus, onFindContact, onCopy,
+  lead: l, expanded, editing, draft, setDraft, sendBusy, copied,
+  onToggle, onEdit, onSave, onCancelEdit, onDelete, onStatus, onSendMail, onCopy,
 }: {
   lead: JobLead;
   expanded: boolean;
   editing: boolean;
   draft: Partial<JobLead>;
   setDraft: (d: Partial<JobLead>) => void;
-  contactBusy: boolean;
+  sendBusy: boolean;
   copied: boolean;
   onToggle: () => void;
   onEdit: () => void;
@@ -377,7 +377,7 @@ function JobRow({
   onCancelEdit: () => void;
   onDelete: () => void;
   onStatus: (s: LeadStatus) => void;
-  onFindContact: () => void;
+  onSendMail: () => void;
   onCopy: () => void;
 }) {
   const status = STATUS_OPTIONS.find((s) => s.value === l.status) || STATUS_OPTIONS[0];
@@ -450,10 +450,14 @@ function JobRow({
               </a>
             )}
             <button
-              onClick={onFindContact} disabled={contactBusy} title="AI: find career page + contact email/phone"
-              className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-teal-300 hover:border-teal-500/40 transition disabled:opacity-50"
+              onClick={onSendMail}
+              disabled={sendBusy || !l.contactEmail}
+              title={l.contactEmail
+                ? `One-click apply: auto-picks your AI or Python resume from the role and sends to ${l.contactEmail}`
+                : "No contact email on this job — add one via ✏️ Edit first"}
+              className="p-1.5 rounded-lg border border-teal-500/40 bg-teal-500/10 text-teal-300 hover:bg-teal-500/25 transition disabled:opacity-40"
             >
-              {contactBusy ? <Loader2 size={14} className="animate-spin" /> : <Radar size={14} />}
+              {sendBusy ? <Loader2 size={14} className="animate-spin" /> : <SendHorizonal size={14} />}
             </button>
             <button
               onClick={onEdit} title="Edit all fields"
