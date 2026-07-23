@@ -71,15 +71,39 @@ async function geminiGroundedSearch(prompt: string, apiKey: string): Promise<str
   return text;
 }
 
-// Groq's web-search models. Mini FIRST: it reliably returns clean JSON and
-// costs far fewer internal calls; the full compound is a last resort — it
-// sometimes answers with prose/reasoning instead of JSON and can 413 on the
-// free tier.
-const GROQ_SEARCH_MODELS = ["groq/compound-mini", "groq/compound"];
+// Groq web-search fallback. Only compound-mini is usable on this tier (the
+// full compound 413s), but mini sometimes answers in prose instead of JSON —
+// so: try mini twice, and if we got *some* searched text without JSON, convert
+// that text to JSON with plain llama in strict JSON mode (it restructures the
+// found data, it does not invent jobs).
+async function groqJsonify(rawText: string, apiKey: string): Promise<string> {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            'Convert the user\'s text into JSON. Extract ONLY information present in the text — never invent. Return {"jobs": [...]} where each job has: company, role, experience, package, location, jd, applyLink, careerPage, contactEmail, contactPhone, postedWhen, source (all strings, "" when absent). Skip anything without a URL.',
+        },
+        { role: "user", content: rawText.slice(0, 12000) },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq jsonify ${res.status}`);
+  const data = await res.json();
+  const obj = JSON.parse(data?.choices?.[0]?.message?.content || "{}");
+  return JSON.stringify(Array.isArray(obj.jobs) ? obj.jobs : []);
+}
 
 async function groqCompoundSearch(prompt: string, apiKey: string): Promise<string> {
   let lastErr = "";
-  for (const model of GROQ_SEARCH_MODELS) {
+  let proseAnswer = "";
+  for (const model of ["groq/compound-mini", "groq/compound-mini", "groq/compound"]) {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -92,17 +116,18 @@ async function groqCompoundSearch(prompt: string, apiKey: string): Promise<strin
     if (!res.ok) {
       const errText = await res.text();
       lastErr = `Groq ${res.status} (${model}): ${errText.slice(0, 160)}`;
-      // 413 too large / 404 unknown model / 400 → try the other model; else real error.
+      // 413 too large / 404 unknown model / 400 → try next attempt; else real error.
       if (res.status !== 413 && res.status !== 404 && res.status !== 400) throw new Error(lastErr);
       continue;
     }
     const data = await res.json();
     const text: string = data?.choices?.[0]?.message?.content || "";
-    // Accept only an answer that actually contains JSON — otherwise try the
-    // other model instead of letting the parser explode downstream.
     if (/[\[{]/.test(text)) return text;
+    if (text.length > 100) proseAnswer = text; // real searched content, wrong shape
     lastErr = `Groq (${model}) answered without JSON`;
   }
+  // Salvage: the search worked but came back as prose — restructure it.
+  if (proseAnswer) return groqJsonify(proseAnswer, apiKey);
   throw new Error(lastErr);
 }
 
