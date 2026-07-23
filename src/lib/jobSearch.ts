@@ -71,9 +71,11 @@ async function geminiGroundedSearch(prompt: string, apiKey: string): Promise<str
   return text;
 }
 
-// Groq's web-search models, tried in order — the full compound rejects some
-// requests on the free tier (413 request_too_large), the mini usually accepts.
-const GROQ_SEARCH_MODELS = ["groq/compound", "groq/compound-mini"];
+// Groq's web-search models. Mini FIRST: it reliably returns clean JSON and
+// costs far fewer internal calls; the full compound is a last resort — it
+// sometimes answers with prose/reasoning instead of JSON and can 413 on the
+// free tier.
+const GROQ_SEARCH_MODELS = ["groq/compound-mini", "groq/compound"];
 
 async function groqCompoundSearch(prompt: string, apiKey: string): Promise<string> {
   let lastErr = "";
@@ -87,16 +89,19 @@ async function groqCompoundSearch(prompt: string, apiKey: string): Promise<strin
         messages: [{ role: "user", content: prompt }],
       }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      const text: string | undefined = data?.choices?.[0]?.message?.content;
-      if (!text) throw new Error("Groq returned no text");
-      return text;
+    if (!res.ok) {
+      const errText = await res.text();
+      lastErr = `Groq ${res.status} (${model}): ${errText.slice(0, 160)}`;
+      // 413 too large / 404 unknown model / 400 → try the other model; else real error.
+      if (res.status !== 413 && res.status !== 404 && res.status !== 400) throw new Error(lastErr);
+      continue;
     }
-    const errText = await res.text();
-    lastErr = `Groq ${res.status} (${model}): ${errText.slice(0, 160)}`;
-    // 413 too large / 404 unknown model → try the smaller model; else real error.
-    if (res.status !== 413 && res.status !== 404 && res.status !== 400) throw new Error(lastErr);
+    const data = await res.json();
+    const text: string = data?.choices?.[0]?.message?.content || "";
+    // Accept only an answer that actually contains JSON — otherwise try the
+    // other model instead of letting the parser explode downstream.
+    if (/[\[{]/.test(text)) return text;
+    lastErr = `Groq (${model}) answered without JSON`;
   }
   throw new Error(lastErr);
 }
