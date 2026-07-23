@@ -6,6 +6,7 @@ import { listLeads, updateLead } from "@/lib/jobLeads";
 import { renderRoleTemplateBody } from "@/lib/candidate";
 import { resolveTransport, sendOne, type Attachment } from "@/lib/mailer";
 import { appendHistory, listHistory, listResumes, listSlots, newId, nowIso, type SendRecord } from "@/lib/jobApp";
+import { listJobResumes } from "@/lib/jobResumes";
 
 export const maxDuration = 60;
 
@@ -19,12 +20,27 @@ const AI_SIGNAL = /\b(ai|ml|llm|genai|generative|agent|agentic|rag|nlp|data\s*sc
 const AI_NAME = /\bai\b|artificial|\bml\b|machine/i;
 const PY_NAME = /python|backend|fastapi/i;
 
-// Resolve resume bytes: managed resumes (disk) first, then Quick Slots
-// (base64 in KV — survives serverless restarts). Matching is by name keywords.
+// Resolve resume bytes, most durable source first: Job Finder resumes
+// (base64 in KV), then managed resumes (disk, ephemeral on Vercel), then
+// Quick Slots (base64 in KV). Matching is by name keywords.
 async function pickResume(
   userEmail: string,
   wantAi: boolean,
 ): Promise<{ attachment: Attachment; label: string } | null> {
+  const jfResumes = await listJobResumes(userEmail);
+  const jfTag = (r: { name: string; filename: string }) => `${r.name} ${r.filename}`;
+  const jfRanked = [
+    ...jfResumes.filter((r) => (wantAi ? AI_NAME : PY_NAME).test(jfTag(r))),
+    ...jfResumes.filter((r) => (wantAi ? PY_NAME : AI_NAME).test(jfTag(r))),
+    ...jfResumes,
+  ];
+  for (const r of jfRanked) {
+    try {
+      const content = Buffer.from(r.base64, "base64");
+      if (content.length > 0) return { attachment: { filename: r.filename, content }, label: r.name };
+    } catch {}
+  }
+
   const resumes = await listResumes(userEmail);
   const tagOf = (r: { label: string; roleType: string; filename: string }) => `${r.label} ${r.roleType} ${r.filename}`;
   const ranked = [

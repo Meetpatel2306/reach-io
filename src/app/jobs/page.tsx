@@ -4,8 +4,25 @@ import { useEffect, useState } from "react";
 import {
   Search, Loader2, Briefcase, ExternalLink, Trash2, Pencil, Check, X,
   Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck, SendHorizonal,
+  FileText, Upload,
 } from "lucide-react";
 import type { JobLead, LeadStatus } from "@/lib/jobLeads";
+
+interface JobResumeMeta {
+  id: string;
+  name: string;
+  filename: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+// Which roles a resume will be auto-picked for (mirrors the server's keyword rules).
+function resumeKind(r: JobResumeMeta): "ai" | "python" | "any" {
+  const tag = `${r.name} ${r.filename}`;
+  if (/\bai\b|artificial|\bml\b|machine/i.test(tag)) return "ai";
+  if (/python|backend|fastapi/i.test(tag)) return "python";
+  return "any";
+}
 
 // Job Finder — a fully separate module from the outreach/mail side.
 // AI-grounded Google search (Gemini primary, Groq backup) → persistent,
@@ -89,6 +106,9 @@ export default function JobsPage() {
   const [sendBusyId, setSendBusyId] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
   const [copiedId, setCopiedId] = useState("");
+  const [jfResumes, setJfResumes] = useState<JobResumeMeta[]>([]);
+  const [uploadingResumes, setUploadingResumes] = useState(false);
+  const [resumeMsg, setResumeMsg] = useState("");
 
   async function copyLead(l: JobLead) {
     if (await copyText(formatLead(l))) {
@@ -112,7 +132,35 @@ export default function JobsPage() {
       .finally(() => setLoaded(true));
     const savedQ = localStorage.getItem("jobfinder-query");
     if (savedQ) setQuery(savedQ);
+    fetch("/api/job-search/resumes", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d.resumes)) setJfResumes(d.resumes); })
+      .catch(() => {});
   }, []);
+
+  async function uploadResumes(files: FileList | null) {
+    if (!files || !files.length) return;
+    setUploadingResumes(true); setResumeMsg("");
+    try {
+      const fd = new FormData();
+      for (const f of Array.from(files)) fd.append("files", f);
+      const res = await fetch("/api/job-search/resumes", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      if (Array.isArray(data.resumes)) setJfResumes(data.resumes);
+      setResumeMsg(`Saved ${data.added?.length || 0} resume${(data.added?.length || 0) === 1 ? "" : "s"} — stored permanently.`);
+    } catch (e) {
+      setResumeMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploadingResumes(false);
+    }
+  }
+
+  async function deleteResume(id: string) {
+    const res = await fetch(`/api/job-search/resumes/${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (Array.isArray(data.resumes)) setJfResumes(data.resumes);
+  }
 
   async function runSearch() {
     if (query.trim().length < 3 || searching) return;
@@ -239,6 +287,57 @@ export default function JobsPage() {
         </p>
         {msg && <p className="text-xs text-teal-300 mt-2">{msg}</p>}
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      </div>
+
+      {/* Resumes for one-click apply — upload once, stored permanently */}
+      <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText size={16} className="text-teal-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-white">Resumes for one-click apply</p>
+              <p className="text-[11px] text-slate-500">
+                Upload once, saved forever. Name them with &ldquo;AI&rdquo; and &ldquo;Python&rdquo; — the ➤ button attaches the right one automatically.
+              </p>
+            </div>
+          </div>
+          <label className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-200 text-sm hover:bg-teal-500/20 transition cursor-pointer ${uploadingResumes ? "opacity-50 pointer-events-none" : ""}`}>
+            {uploadingResumes ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            {uploadingResumes ? "Saving..." : "Add resumes"}
+            <input
+              type="file"
+              accept=".pdf,application/pdf"
+              multiple
+              className="hidden"
+              onChange={(e) => { uploadResumes(e.target.files); e.target.value = ""; }}
+            />
+          </label>
+        </div>
+        {resumeMsg && <p className="text-xs text-teal-300 mt-2">{resumeMsg}</p>}
+        {jfResumes.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {jfResumes.map((r) => {
+              const kind = resumeKind(r);
+              return (
+                <span key={r.id} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5 text-xs text-slate-200">
+                  <FileText size={12} className="text-slate-500" />
+                  <span className="max-w-[180px] truncate">{r.filename}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    kind === "ai" ? "bg-violet-500/20 text-violet-300"
+                    : kind === "python" ? "bg-teal-500/20 text-teal-300"
+                    : "bg-slate-700 text-slate-400"
+                  }`}>
+                    {kind === "ai" ? "AI roles" : kind === "python" ? "Python roles" : "any role"}
+                  </span>
+                  <span className="text-slate-600">{(r.sizeBytes / 1024).toFixed(0)} KB</span>
+                  <button onClick={() => deleteResume(r.id)} title="Delete" className="text-slate-500 hover:text-red-400 transition">
+                    <X size={12} />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Table header row: filter + clear */}
