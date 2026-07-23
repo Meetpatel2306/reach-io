@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, Loader2, ShieldAlert } from "lucide-react";
+import { useRef, useState } from "react";
+import { Sparkles, Loader2, ShieldAlert, Paperclip, Upload } from "lucide-react";
 
 // AI-personalised draft generator (Gemini, with Groq as automatic backup).
 // The AI only writes the subject line + a company-specific hook and picks which
@@ -30,8 +30,23 @@ const FORMAT_LABELS: Record<string, string> = {
   fixed: "minimal format",
 };
 
-export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) => void }) {
+export function AiPersonalize({
+  onGenerated,
+  resumeFile,
+  resumeFilename,
+  onResumeUpload,
+}: {
+  onGenerated: (draft: AiDraft) => void;
+  // The resume already picked/saved on the Resume step (second priority).
+  resumeFile?: File | null;
+  resumeFilename?: string | null;
+  // Called when the user uploads a resume right here (first priority) so the
+  // compose flow attaches the same file when sending.
+  onResumeUpload?: (file: File) => void;
+}) {
   const [company, setCompany] = useState("");
+  const [uploadedResume, setUploadedResume] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [roleTitle, setRoleTitle] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientTitle, setRecipientTitle] = useState("");
@@ -53,11 +68,23 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
     setBusy(true); setError(""); setBlocks([]); setResult(null);
     setHasDraft(false); setConfirmed(false);
     try {
-      const res = await fetch("/api/ai/personalize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company, roleTitle, recipientName, recipientTitle, recipientEmail, jdText, format }),
-      });
+      const fd = new FormData();
+      fd.append("company", company);
+      fd.append("roleTitle", roleTitle);
+      fd.append("recipientName", recipientName);
+      fd.append("recipientTitle", recipientTitle);
+      fd.append("recipientEmail", recipientEmail);
+      fd.append("jdText", jdText);
+      fd.append("format", format);
+      // Resume priority: 1) uploaded right here, 2) the saved/picked one.
+      if (uploadedResume && uploadedResume.size > 0) {
+        fd.append("resumeFile", uploadedResume);
+      } else if (resumeFile && resumeFile.size > 0) {
+        fd.append("resumeFile", resumeFile);
+      } else if (resumeFilename) {
+        fd.append("resumeFilename", resumeFilename);
+      }
+      const res = await fetch("/api/ai/personalize", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
       if (data.blocked) {
@@ -114,6 +141,37 @@ export function AiPersonalize({ onGenerated }: { onGenerated: (draft: AiDraft) =
               <option value="backend">Python Developer template</option>
               <option value="fixed">Minimal (short generic format)</option>
             </select>
+          </div>
+
+          {/* Resume used for this email — uploaded here beats the saved pick */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-slate-700/60 bg-slate-800/40 px-3 py-2.5">
+            <p className="text-xs text-slate-400 flex items-center gap-1.5 flex-1 min-w-0">
+              <Paperclip size={13} className="shrink-0 text-slate-500" />
+              {uploadedResume
+                ? <>Resume: <span className="text-emerald-300 truncate">{uploadedResume.name}</span> (uploaded here)</>
+                : (resumeFile && resumeFile.size > 0) || resumeFilename
+                  ? <>Resume: <span className="text-slate-300 truncate">{resumeFile?.name || resumeFilename?.replace(/^(job)?resume_[^_]*_/, "")}</span> (from Resume step)</>
+                  : <>No resume yet — upload one here or pick one on the Resume step.</>}
+            </p>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-200 text-xs hover:bg-violet-500/20 transition"
+            >
+              <Upload size={12} /> Upload resume
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setUploadedResume(f);
+                onResumeUpload?.(f);
+                e.target.value = "";
+              }}
+            />
           </div>
 
           <div>

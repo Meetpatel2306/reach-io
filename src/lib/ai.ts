@@ -23,6 +23,9 @@ export interface AiInput {
   recipientTitle: string;
   roleTitle: string;
   jdText: string;
+  // Plain text extracted from the attached resume PDF — an additional
+  // source of true candidate facts, never a replacement for CANDIDATE_FACTS.
+  resumeText?: string;
 }
 
 const SYSTEM_INSTRUCTION = `You write the personalised parts of cold job-application emails for one specific
@@ -56,7 +59,9 @@ Read the job description and produce:
 ## Absolute rules
 
 1. NEVER invent a fact about the candidate. You may only use the CANDIDATE_FACTS
-   provided. You may rephrase them; you may not add to them. Do not state years of
+   provided (and RESUME_TEXT when present — it is the candidate's real resume, so
+   facts stated there are equally usable). You may rephrase them; you may not add
+   to them. Do not state years of
    experience, technologies, employers, metrics, education or achievements that are
    not in CANDIDATE_FACTS. If a job description asks for something the candidate does
    not have, say nothing about it — never imply it.
@@ -131,6 +136,9 @@ const RESPONSE_SCHEMA = {
 };
 
 function buildUserMessage(input: AiInput): string {
+  const resumeBlock = input.resumeText
+    ? `\n\nRESUME_TEXT (the candidate's actual attached resume — additional true facts):\n"""\n${input.resumeText}\n"""`
+    : "";
   return `COMPANY: ${input.company}
 RECIPIENT: ${input.recipientName || "Unknown"} — ${input.recipientTitle || "Unknown"}
 ROLE: ${input.roleTitle}
@@ -141,7 +149,7 @@ ${input.jdText}
 """
 
 CANDIDATE_FACTS:
-${JSON.stringify(CANDIDATE_FACTS, null, 2)}`;
+${JSON.stringify(CANDIDATE_FACTS, null, 2)}${resumeBlock}`;
 }
 
 interface ParsedOutput {

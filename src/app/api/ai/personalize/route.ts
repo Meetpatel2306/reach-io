@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import fs from "fs/promises";
+import path from "path";
 import { requireUser } from "@/app/api/jobs/_helpers";
 import { generatePersonalization } from "@/lib/ai";
 import { GENERIC_INBOX, getProject, pickFormatForProject, renderOutreachBody, renderRoleTemplateBody } from "@/lib/candidate";
@@ -15,13 +17,44 @@ import { listHistory } from "@/lib/jobApp";
 
 const DAILY_CAP = 20;
 const COMPANY_COOLDOWN_DAYS = 30;
+const UPLOADS_DIR = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "uploads");
+
+// Extract plain text from the attached resume PDF so the AI can draw on the
+// candidate's real resume. Best-effort: any failure just means "no resume text".
+async function extractResumeText(buffer: Buffer): Promise<string> {
+  try {
+    const pdfParse = (await import("pdf-parse")).default;
+    const parsed = await pdfParse(buffer);
+    return (parsed.text || "").replace(/\s+\n/g, "\n").trim().slice(0, 6000);
+  } catch {
+    return "";
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireUser();
     if (!auth.ok) return auth.response;
 
-    const body = await req.json().catch(() => ({}));
+    // Accept both multipart (with resume) and plain JSON (without).
+    let body: Record<string, unknown> = {};
+    let resumeText = "";
+    const contentType = req.headers.get("content-type") || "";
+    if (contentType.includes("multipart/form-data")) {
+      const fd = await req.formData();
+      for (const [k, v] of fd.entries()) if (typeof v === "string") body[k] = v;
+      const resumeFile = fd.get("resumeFile") as File | null;
+      const resumeFilename = fd.get("resumeFilename") as string | null;
+      let buffer: Buffer | null = null;
+      if (resumeFile && resumeFile.size > 0) {
+        buffer = Buffer.from(await resumeFile.arrayBuffer());
+      } else if (resumeFilename) {
+        try { buffer = await fs.readFile(path.join(UPLOADS_DIR, resumeFilename)); } catch {}
+      }
+      if (buffer) resumeText = await extractResumeText(buffer);
+    } else {
+      body = await req.json().catch(() => ({}));
+    }
     const company = String(body.company || "").trim();
     const roleTitle = String(body.roleTitle || "").trim();
     const jdText = String(body.jdText || "").trim();
@@ -111,7 +144,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- AI call: Gemini primary, Groq fallback ----
-    const ai = await generatePersonalization({ company, recipientName, recipientTitle, roleTitle, jdText });
+    const ai = await generatePersonalization({ company, recipientName, recipientTitle, roleTitle, jdText, resumeText });
 
     if (ai.confidence === "low" || !ai.hook) {
       return NextResponse.json({

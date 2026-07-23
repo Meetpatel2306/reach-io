@@ -1499,6 +1499,17 @@ export default function Home() {
                 <>
                   {composeMode === "ai" && (
                   <AiPersonalize
+                    resumeFile={resumeFile}
+                    resumeFilename={resumeFilename}
+                    onResumeUpload={(file) => {
+                      // Uploaded in the AI panel — becomes THE resume for this send
+                      // (first priority over anything picked on the Resume step).
+                      setResumeFile(file);
+                      setResumeFilename("");
+                      setResumeSaved(true);
+                      slotResumeRef.current = null;
+                      addLog(`Resume uploaded in AI panel: ${file.name}`);
+                    }}
                     onGenerated={(draft) => {
                       setSubject(draft.subject);
                       setBody(draft.body);
