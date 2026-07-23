@@ -80,6 +80,8 @@ export function AppNav() {
 
           <div className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1">
             {LINKS.map(({ href, label, icon: Icon }) => {
+              // Templates are a static-mode concept — hide the whole section in AI mode.
+              if (href === "/templates" && mode === "ai") return null;
               const active = pathname === href;
               return (
                 <Link key={href} href={href} className={`nav-link ${active ? "nav-link-active" : ""}`}>

@@ -1334,7 +1334,9 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
 
-          {/* Saved Slots — load template + resume in one tap */}
+          {/* Saved Slots — template + resume bundles: a static-mode concept,
+              hidden entirely while the global toggle is on AI mode. */}
+          {composeMode === "template" && (
           <SavedSlotsBar
             currentSubject={subject}
             currentBody={body}
@@ -1365,6 +1367,7 @@ export default function Home() {
               }
             }}
           />
+          )}
 
           {/* Step 1: Resume */}
           {currentStep === 1 && (
