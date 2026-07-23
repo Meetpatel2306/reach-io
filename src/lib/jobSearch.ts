@@ -20,7 +20,10 @@ export interface FoundJob {
   source: string;
 }
 
-const SEARCH_PROMPT = (query: string, location: string) => `Use your web search tool NOW — do not answer from memory and do not say you cannot search. Run multiple searches for REAL job postings that are currently open and match:
+// Phrasing matters for Groq's compound agent: "Search the web" reliably
+// triggers its search tool; "Search Google" or aggressive commands make it
+// refuse ("I can't search Google" / "I can't fulfill that request").
+const SEARCH_PROMPT = (query: string, location: string) => `Search the web for REAL job postings that are currently open and match:
 
 ROLE QUERY: ${query}
 LOCATION: ${location || "India or Remote"}
@@ -44,7 +47,7 @@ Return ONLY a JSON array (no markdown, no commentary). Each element exactly:
   "postedWhen": "e.g. 2 days ago or \\"\\"", "source": "domain the posting is on"
 }`;
 
-const CONTACT_PROMPT = (company: string, role: string) => `Search Google for the company "${company}" (which is hiring for "${role}").
+const CONTACT_PROMPT = (company: string, role: string) => `Search the web for the company "${company}" (which is hiring for "${role}").
 Find:
 1. their official careers/jobs page URL
 2. a PUBLIC hiring or general contact email address (careers@..., hr@..., hello@... from their own website)
