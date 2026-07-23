@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Send, Mail, BellRing, FileText, History, BookOpen, Crown, LifeBuoy, Sparkles } from "lucide-react";
+import { Send, Mail, BellRing, FileText, History, BookOpen, Crown, LifeBuoy, Sparkles, Briefcase } from "lucide-react";
 
 // Global compose mode — "ai" (dynamic) or "template" (static). Persisted in
 // localStorage and broadcast via a CustomEvent so the compose page reacts live.
@@ -31,6 +31,7 @@ const LINKS = [
   { href: "/followups", label: "Follow-ups", icon: BellRing },
   { href: "/templates", label: "Templates", icon: FileText },
   { href: "/history", label: "History", icon: History },
+  { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/guide", label: "Guide", icon: BookOpen },
   { href: "/support", label: "Support", icon: LifeBuoy },
 ];
