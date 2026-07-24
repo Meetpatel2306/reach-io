@@ -67,8 +67,8 @@ function extractJson<T>(text: string): T {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-async function geminiGroundedSearch(prompt: string, apiKey: string): Promise<string> {
-  const { data } = await geminiGenerate(apiKey, {
+async function geminiGroundedSearch(prompt: string, apiKeys: string[]): Promise<string> {
+  const { data } = await geminiGenerate(apiKeys, {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     tools: [{ google_search: {} }],
     generationConfig: { temperature: 0.2 },
@@ -83,97 +83,112 @@ async function geminiGroundedSearch(prompt: string, apiKey: string): Promise<str
 // so: try mini twice, and if we got *some* searched text without JSON, convert
 // that text to JSON with plain llama in strict JSON mode (it restructures the
 // found data, it does not invent jobs).
-async function groqJsonify(rawText: string, apiKey: string): Promise<string> {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            'Convert the user\'s text into JSON. Extract ONLY information present in the text — never invent. Return {"jobs": [...]} where each job has: company, role, experience, package, location, jd, applyLink, careerPage, contactEmail, contactPhone, postedWhen, source (all strings, "" when absent). Skip anything without a URL.',
-        },
-        { role: "user", content: rawText.slice(0, 12000) },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`Groq jsonify ${res.status}`);
-  const data = await res.json();
-  const obj = JSON.parse(data?.choices?.[0]?.message?.content || "{}");
-  return JSON.stringify(Array.isArray(obj.jobs) ? obj.jobs : []);
-}
-
-async function groqCompoundSearch(prompt: string, apiKey: string): Promise<string> {
+async function groqJsonify(rawText: string, apiKeys: string[]): Promise<string> {
   let lastErr = "";
-  let proseAnswer = "";
-  // Mini refuses to search on some calls — give it three chances (each refusal
-  // is only a few seconds) before the big compound, which 413s on some tiers.
-  for (const model of ["groq/compound-mini", "groq/compound-mini", "groq/compound-mini", "groq/compound"]) {
+  for (const apiKey of apiKeys) {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              'Convert the user\'s text into JSON. Extract ONLY information present in the text — never invent. Return {"jobs": [...]} where each job has: company, role, experience, package, location, jd, applyLink, careerPage, contactEmail, contactPhone, postedWhen, source (all strings, "" when absent). Skip anything without a URL.',
+          },
+          { role: "user", content: rawText.slice(0, 12000) },
+        ],
       }),
     });
-    if (!res.ok) {
-      const errText = await res.text();
-      lastErr = `Groq ${res.status} (${model}): ${errText.slice(0, 160)}`;
-      // 413 too large / 404 unknown model / 400 → try next attempt; else real error.
-      if (res.status !== 413 && res.status !== 404 && res.status !== 400) throw new Error(lastErr);
-      continue;
+    if (res.ok) {
+      const data = await res.json();
+      const obj = JSON.parse(data?.choices?.[0]?.message?.content || "{}");
+      return JSON.stringify(Array.isArray(obj.jobs) ? obj.jobs : []);
     }
-    const data = await res.json();
-    const text: string = data?.choices?.[0]?.message?.content || "";
-    // A refusal ("I can't search the web") has no URLs — retry, never accept it.
-    const searched = /https?:\/\//i.test(text);
-    if (searched && /[\[{]/.test(text)) return text;
-    if (searched) proseAnswer = text; // real searched content, wrong shape
-    lastErr = searched ? `Groq (${model}) answered without JSON` : `Groq (${model}) skipped its web search`;
+    lastErr = `Groq jsonify ${res.status}`;
+    if (![429, 413, 401, 403].includes(res.status)) throw new Error(lastErr);
   }
-  // Salvage: the search worked but came back as prose — restructure it.
-  if (proseAnswer) return groqJsonify(proseAnswer, apiKey);
-  throw new Error(lastErr);
+  throw new Error(lastErr || "No Groq key");
 }
 
-// Run a prompt through Gemini-with-search first, Groq compound as backup.
-async function searchWithFallback(prompt: string): Promise<{ text: string; provider: "gemini" | "groq" }> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
-  if (!geminiKey && !groqKey) {
-    throw new Error("No AI key configured — add GEMINI_API_KEY (and optionally GROQ_API_KEY).");
+async function groqCompoundSearch(prompt: string, apiKeys: string[]): Promise<string> {
+  let lastErr = "";
+  let proseAnswer = "";
+  for (const apiKey of apiKeys) {
+    // Mini refuses to search on some calls — give it three chances (each refusal
+    // is only a few seconds) before the big compound, which 413s on some tiers.
+    for (const model of ["groq/compound-mini", "groq/compound-mini", "groq/compound-mini", "groq/compound"]) {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        lastErr = `Groq ${res.status} (${model}): ${errText.slice(0, 160)}`;
+        // Quota / bad key → rotate to the next key.
+        if (res.status === 429 || res.status === 401 || res.status === 403) break;
+        // 413 too large / 404 unknown model / 400 → try next attempt; else real error.
+        if (res.status !== 413 && res.status !== 404 && res.status !== 400) throw new Error(lastErr);
+        continue;
+      }
+      const data = await res.json();
+      const text: string = data?.choices?.[0]?.message?.content || "";
+      // A refusal ("I can't search the web") has no URLs — retry, never accept it.
+      const searched = /https?:\/\//i.test(text);
+      if (searched && /[\[{]/.test(text)) return text;
+      if (searched) proseAnswer = text; // real searched content, wrong shape
+      lastErr = searched ? `Groq (${model}) answered without JSON` : `Groq (${model}) skipped its web search`;
+    }
+  }
+  // Salvage: the search worked but came back as prose — restructure it.
+  if (proseAnswer) return groqJsonify(proseAnswer, apiKeys);
+  throw new Error(lastErr || "No Groq API key on your account");
+}
+
+export interface AiKeys {
+  gemini: string[];
+  groq: string[];
+}
+
+// Run a prompt through Gemini-with-search first, Groq compound as backup —
+// using the USER'S stored keys (rotated on quota), never env at runtime.
+async function searchWithFallback(prompt: string, keys: AiKeys): Promise<{ text: string; provider: "gemini" | "groq" }> {
+  if (!keys.gemini.length && !keys.groq.length) {
+    throw new Error("No AI key on your account — add your Gemini API key (and optionally Groq) in the AI keys section above.");
   }
   let geminiError = "";
-  if (geminiKey) {
+  if (keys.gemini.length) {
     try {
-      return { text: await geminiGroundedSearch(prompt, geminiKey), provider: "gemini" };
+      return { text: await geminiGroundedSearch(prompt, keys.gemini), provider: "gemini" };
     } catch (e) {
       geminiError = e instanceof Error ? e.message : String(e);
     }
   }
-  if (groqKey) {
+  if (keys.groq.length) {
     try {
-      return { text: await groqCompoundSearch(prompt, groqKey), provider: "groq" };
+      return { text: await groqCompoundSearch(prompt, keys.groq), provider: "groq" };
     } catch (e) {
       const groqError = e instanceof Error ? e.message : String(e);
       throw new Error(geminiError ? `Gemini: ${geminiError} · Groq: ${groqError}` : `Groq: ${groqError}`);
     }
   }
-  throw new Error(`Gemini failed and no Groq backup key set. ${geminiError}`);
+  throw new Error(`Gemini failed and no Groq backup key on your account. ${geminiError}`);
 }
 
 function cleanStr(v: unknown, max = 300): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
-export async function searchJobs(query: string, location: string): Promise<{ jobs: FoundJob[]; provider: string }> {
-  const { text, provider } = await searchWithFallback(SEARCH_PROMPT(query, location));
+export async function searchJobs(query: string, location: string, keys: AiKeys): Promise<{ jobs: FoundJob[]; provider: string }> {
+  const { text, provider } = await searchWithFallback(SEARCH_PROMPT(query, location), keys);
   const raw = extractJson<unknown[]>(text);
   if (!Array.isArray(raw)) throw new Error("Model did not return a job list");
   const jobs: FoundJob[] = [];
@@ -207,8 +222,8 @@ export async function searchJobs(query: string, location: string): Promise<{ job
   return { jobs, provider };
 }
 
-export async function findContact(company: string, role: string): Promise<{ careerPage: string; contactEmail: string; contactPhone: string; provider: string }> {
-  const { text, provider } = await searchWithFallback(CONTACT_PROMPT(company, role));
+export async function findContact(company: string, role: string, keys: AiKeys): Promise<{ careerPage: string; contactEmail: string; contactPhone: string; provider: string }> {
+  const { text, provider } = await searchWithFallback(CONTACT_PROMPT(company, role), keys);
   const o = extractJson<Record<string, unknown>>(text);
   return {
     careerPage: cleanStr(o.careerPage, 500),

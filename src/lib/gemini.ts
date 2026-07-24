@@ -1,9 +1,11 @@
-// Server-only Gemini transport with automatic model resolution.
+// Server-only Gemini transport with automatic model resolution AND key rotation.
 //
-// Google retires model IDs (gemini-2.5-flash 404s for newer accounts), so we
-// never hardcode one call site again: try candidates in order, remember the
-// first that works for the rest of the process lifetime. `GEMINI_MODEL` env var
-// overrides everything when set.
+// Models: Google retires model IDs (gemini-2.5-flash 404s for newer accounts),
+// so we try candidates in order and remember the first that works. GEMINI_MODEL
+// env var overrides the candidate list when set.
+//
+// Keys: callers pass the user's stored keys (possibly several). When a key is
+// out of quota (429) or invalid (401/403), the next key takes over.
 
 const CANDIDATES = [
   process.env.GEMINI_MODEL, // explicit override always wins
@@ -25,44 +27,52 @@ export function geminiTextFrom(data: GeminiResponse): string {
 }
 
 export async function geminiGenerate(
-  apiKey: string,
+  apiKeys: string | string[],
   payload: Record<string, unknown>,
 ): Promise<{ data: GeminiResponse; model: string }> {
+  const keys = (Array.isArray(apiKeys) ? apiKeys : [apiKeys]).filter(Boolean);
+  if (!keys.length) {
+    throw new Error("No Gemini API key configured — add yours in the AI keys section on the Jobs page.");
+  }
+
   const models = workingModel
     ? [workingModel, ...CANDIDATES.filter((m) => m !== workingModel)]
     : CANDIDATES;
   let lastErr = "";
 
-  for (const model of models) {
-    // Gemini 3 models reject the 2.5-era thinkingConfig — send it only to 2.5.
-    const body = { ...payload } as { generationConfig?: Record<string, unknown> };
-    if (!model.startsWith("gemini-2.5") && body.generationConfig && "thinkingConfig" in body.generationConfig) {
-      const { thinkingConfig: _drop, ...rest } = body.generationConfig;
-      body.generationConfig = rest;
+  for (const key of keys) {
+    for (const model of models) {
+      // Gemini 3 models reject the 2.5-era thinkingConfig — send it only to 2.5.
+      const body = { ...payload } as { generationConfig?: Record<string, unknown> };
+      if (!model.startsWith("gemini-2.5") && body.generationConfig && "thinkingConfig" in body.generationConfig) {
+        const { thinkingConfig: _drop, ...rest } = body.generationConfig;
+        body.generationConfig = rest;
+      }
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        workingModel = model;
+        return { data: await res.json(), model };
+      }
+
+      const errText = await res.text();
+      lastErr = `${model} → ${res.status} ${errText.slice(0, 160)}`;
+
+      // Key-level failures: quota exhausted or bad key → rotate to the next key.
+      if (res.status === 429 || res.status === 401 || res.status === 403) break;
+      // Model-level failures: retired/unknown model or unsupported field → next model.
+      const nextModel = res.status === 404 || (res.status === 400 && /model|thinking|not supported/i.test(errText));
+      if (!nextModel) throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
     }
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (res.ok) {
-      workingModel = model;
-      return { data: await res.json(), model };
-    }
-
-    const errText = await res.text();
-    lastErr = `${model} → ${res.status} ${errText.slice(0, 160)}`;
-    // 404 = model retired/unknown for this key; 400 mentioning the model or
-    // unsupported fields = wrong generation — try the next candidate. Anything
-    // else (401 bad key, 429 quota, 5xx) is a real error the caller should see.
-    const tryNext = res.status === 404 || (res.status === 400 && /model|thinking|not supported/i.test(errText));
-    if (!tryNext) throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
   }
 
   throw new Error(
-    `No available Gemini model for this API key (last: ${lastErr}). Set a GEMINI_MODEL env var to a model your key supports.`,
+    `All Gemini keys/models failed (last: ${lastErr}). If this is quota, add another key in the AI keys section — the app rotates automatically.`,
   );
 }

@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { requireUser } from "@/app/api/jobs/_helpers";
 import { generatePersonalization } from "@/lib/ai";
+import { getAiKeysForUse } from "@/lib/settings";
 import { GENERIC_INBOX, getProject, pickFormatForProject, renderOutreachBody, renderRoleTemplateBody } from "@/lib/candidate";
 import { listHistory } from "@/lib/jobApp";
 
@@ -148,7 +149,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- AI call: Gemini primary, Groq fallback ----
-    const ai = await generatePersonalization({ company, recipientName, recipientTitle, roleTitle, jdText, resumeText });
+    const aiKeys = await getAiKeysForUse(auth.email);
+    const ai = await generatePersonalization({ company, recipientName, recipientTitle, roleTitle, jdText, resumeText }, aiKeys);
 
     if (ai.confidence === "low" || !ai.hook) {
       return NextResponse.json({

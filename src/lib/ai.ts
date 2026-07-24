@@ -181,8 +181,8 @@ function parseModelJson(text: string): ParsedOutput {
   };
 }
 
-async function callGemini(input: AiInput, apiKey: string): Promise<ParsedOutput> {
-  const { data } = await geminiGenerate(apiKey, {
+async function callGemini(input: AiInput, apiKeys: string[]): Promise<ParsedOutput> {
+  const { data } = await geminiGenerate(apiKeys, {
     systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
     contents: [{ role: "user", parts: [{ text: buildUserMessage(input) }] }],
     generationConfig: {
@@ -200,58 +200,68 @@ async function callGemini(input: AiInput, apiKey: string): Promise<ParsedOutput>
   return parseModelJson(text);
 }
 
-async function callGroq(input: AiInput, apiKey: string): Promise<ParsedOutput> {
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.4,
-      max_tokens: 512,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            SYSTEM_INSTRUCTION +
-            `\n\nReturn a single JSON object with exactly these keys: "subject" (string), "hook" (string), "lead_project_id" (string), "second_project_id" (string, optional), "role_type" ("ai" or "backend"), "confidence" ("high" or "low"), "reason" (string).`,
-        },
-        { role: "user", content: buildUserMessage(input) },
-      ],
-    }),
-  });
-  if (!res.ok) {
+// Groq with key rotation: quota/invalid-key responses move to the next key.
+async function callGroq(input: AiInput, apiKeys: string[]): Promise<ParsedOutput> {
+  let lastErr = "";
+  for (const apiKey of apiKeys) {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.4,
+        max_tokens: 512,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              SYSTEM_INSTRUCTION +
+              `\n\nReturn a single JSON object with exactly these keys: "subject" (string), "hook" (string), "lead_project_id" (string), "second_project_id" (string, optional), "role_type" ("ai" or "backend"), "confidence" ("high" or "low"), "reason" (string).`,
+          },
+          { role: "user", content: buildUserMessage(input) },
+        ],
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text: string | undefined = data?.choices?.[0]?.message?.content;
+      if (!text) throw new Error("Groq returned no text");
+      return parseModelJson(text);
+    }
     const errText = await res.text();
-    throw new Error(`Groq ${res.status}: ${errText.slice(0, 200)}`);
+    lastErr = `Groq ${res.status}: ${errText.slice(0, 200)}`;
+    // Rotate on quota / too-large / auth; anything else is a real error.
+    if (![429, 413, 401, 403].includes(res.status)) throw new Error(lastErr);
   }
-  const data = await res.json();
-  const text: string | undefined = data?.choices?.[0]?.message?.content;
-  if (!text) throw new Error("Groq returned no text");
-  return parseModelJson(text);
+  throw new Error(lastErr || "No Groq API key configured");
 }
 
-// Gemini first; if it errors (bad key, quota, outage), fall back to Groq.
-export async function generatePersonalization(input: AiInput): Promise<AiPersonalization> {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
+// The user's stored keys (multiple per provider — rotated on quota).
+export interface AiKeys {
+  gemini: string[];
+  groq: string[];
+}
 
-  if (!geminiKey && !groqKey) {
-    throw new Error("No AI key configured. Add GEMINI_API_KEY (and optionally GROQ_API_KEY as backup) to the environment.");
+// Gemini first; if it errors (quota on every key, outage), fall back to Groq.
+export async function generatePersonalization(input: AiInput, keys: AiKeys): Promise<AiPersonalization> {
+  if (!keys.gemini.length && !keys.groq.length) {
+    throw new Error("No AI key on your account. Add your Gemini API key (and optionally Groq as backup) in the AI keys section on the Jobs page.");
   }
 
   let geminiError = "";
-  if (geminiKey) {
+  if (keys.gemini.length) {
     try {
-      const out = await callGemini(input, geminiKey);
+      const out = await callGemini(input, keys.gemini);
       return { ...out, provider: "gemini" };
     } catch (err: unknown) {
       geminiError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  if (groqKey) {
+  if (keys.groq.length) {
     try {
-      const out = await callGroq(input, groqKey);
+      const out = await callGroq(input, keys.groq);
       return { ...out, provider: "groq" };
     } catch (err: unknown) {
       const groqError = err instanceof Error ? err.message : String(err);
@@ -263,5 +273,5 @@ export async function generatePersonalization(input: AiInput): Promise<AiPersona
     }
   }
 
-  throw new Error(`Gemini failed and no Groq backup key is set. Gemini: ${geminiError}`);
+  throw new Error(`Gemini failed and no Groq backup key on your account. Gemini: ${geminiError}`);
 }

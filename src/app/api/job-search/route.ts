@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/app/api/jobs/_helpers";
 import { searchJobs } from "@/lib/jobSearch";
 import { appendLeads, clearLeads, listLeads } from "@/lib/jobLeads";
+import { getAiKeysForUse } from "@/lib/settings";
 
 export const maxDuration = 60;
 
@@ -23,7 +24,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { jobs, provider } = await searchJobs(query, location);
+    const aiKeys = await getAiKeysForUse(auth.email);
+    const { jobs, provider } = await searchJobs(query, location, aiKeys);
     const { added, skipped } = await appendLeads(auth.email, jobs, query);
     const leads = await listLeads(auth.email);
 

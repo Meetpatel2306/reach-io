@@ -26,9 +26,18 @@ export interface StoredGoogle {
   connectedAt: string;
 }
 
+// Per-user AI provider keys — encrypted entries, multiple per provider so the
+// clients can rotate to the next key when one runs out of daily quota.
+export interface StoredAiKeys {
+  gemini: string[]; // encrypted
+  groq: string[]; // encrypted
+  importedFromEnv?: boolean;
+}
+
 interface UserSettings {
   smtp?: StoredSmtp | null;
   google?: StoredGoogle | null;
+  aiKeys?: StoredAiKeys | null;
   updatedAt?: string;
 }
 
@@ -116,6 +125,82 @@ export async function clearGoogle(email: string): Promise<void> {
   const s = await load(email);
   s.google = null;
   await save(email, s);
+}
+
+// ---- AI keys (per-user, encrypted, synced across devices) ----
+
+export type AiProvider = "gemini" | "groq";
+
+function emptyAiKeys(): StoredAiKeys {
+  return { gemini: [], groq: [] };
+}
+
+// One-time bootstrap: if this user has no stored keys yet but the deployment
+// still has env keys, encrypt those into the user's own record. After this,
+// the env vars are dead weight and can be removed from the environment.
+async function importEnvKeysIfNeeded(email: string, s: UserSettings): Promise<void> {
+  const cur = s.aiKeys || emptyAiKeys();
+  if (cur.importedFromEnv || cur.gemini.length || cur.groq.length) return;
+  const envGemini = process.env.GEMINI_API_KEY;
+  const envGroq = process.env.GROQ_API_KEY;
+  if (!envGemini && !envGroq) return;
+  s.aiKeys = {
+    gemini: envGemini ? [encryptSecret(envGemini)] : [],
+    groq: envGroq ? [encryptSecret(envGroq)] : [],
+    importedFromEnv: true,
+  };
+  await save(email, s);
+}
+
+export async function addAiKey(email: string, provider: AiProvider, key: string): Promise<void> {
+  const s = await load(email);
+  await importEnvKeysIfNeeded(email, s);
+  const cur = s.aiKeys || emptyAiKeys();
+  // Skip exact duplicates (compare decrypted).
+  const existing = cur[provider].map((e) => decryptSecret(e)).filter(Boolean);
+  if (existing.includes(key.trim())) return;
+  cur[provider] = [...cur[provider], encryptSecret(key.trim())];
+  cur.importedFromEnv = true; // any manual add also ends the bootstrap phase
+  s.aiKeys = cur;
+  await save(email, s);
+}
+
+export async function removeAiKey(email: string, provider: AiProvider, index: number): Promise<void> {
+  const s = await load(email);
+  const cur = s.aiKeys || emptyAiKeys();
+  cur[provider] = cur[provider].filter((_, i) => i !== index);
+  s.aiKeys = cur;
+  await save(email, s);
+}
+
+function maskKey(k: string): string {
+  return k.length <= 10 ? "••••••" : `${k.slice(0, 6)}••••••${k.slice(-4)}`;
+}
+
+// Keys for the settings UI. Masked by default; reveal=true returns the real
+// values (it is the owner's own key, behind their authenticated session).
+export async function getAiKeysView(
+  email: string,
+  reveal = false,
+): Promise<{ gemini: string[]; groq: string[] }> {
+  const s = await load(email);
+  await importEnvKeysIfNeeded(email, s);
+  const cur = s.aiKeys || emptyAiKeys();
+  const view = (list: string[]) =>
+    list.map((e) => decryptSecret(e)).filter(Boolean).map((k) => (reveal ? k : maskKey(k)));
+  return { gemini: view(cur.gemini), groq: view(cur.groq) };
+}
+
+// Decrypted keys for actual AI calls. Runtime reads ONLY the user's stored
+// keys — env vars are just the one-time import source above.
+export async function getAiKeysForUse(email: string): Promise<{ gemini: string[]; groq: string[] }> {
+  const s = await load(email);
+  await importEnvKeysIfNeeded(email, s);
+  const cur = s.aiKeys || emptyAiKeys();
+  return {
+    gemini: cur.gemini.map((e) => decryptSecret(e)).filter(Boolean),
+    groq: cur.groq.map((e) => decryptSecret(e)).filter(Boolean),
+  };
 }
 
 // Server-only: the Google account email + decrypted refresh token, for the send

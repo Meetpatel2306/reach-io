@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Search, Loader2, Briefcase, ExternalLink, Trash2, Pencil, Check, X,
   Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck, SendHorizonal,
-  FileText, Upload,
+  FileText, Upload, KeyRound, Eye, EyeOff, Plus,
 } from "lucide-react";
 import type { JobLead, LeadStatus } from "@/lib/jobLeads";
 
@@ -109,6 +109,12 @@ export default function JobsPage() {
   const [jfResumes, setJfResumes] = useState<JobResumeMeta[]>([]);
   const [uploadingResumes, setUploadingResumes] = useState(false);
   const [resumeMsg, setResumeMsg] = useState("");
+  // Per-account AI keys (encrypted server-side, synced across devices)
+  const [aiKeys, setAiKeys] = useState<{ gemini: string[]; groq: string[] }>({ gemini: [], groq: [] });
+  const [keysRevealed, setKeysRevealed] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [keyInput, setKeyInput] = useState<{ gemini: string; groq: string }>({ gemini: "", groq: "" });
+  const [keyMsg, setKeyMsg] = useState("");
 
   async function copyLead(l: JobLead) {
     if (await copyText(formatLead(l))) {
@@ -136,7 +142,44 @@ export default function JobsPage() {
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d.resumes)) setJfResumes(d.resumes); })
       .catch(() => {});
+    fetch("/api/settings/ai-keys", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => { if (d.keys) setAiKeys(d.keys); })
+      .catch(() => {});
   }, []);
+
+  async function toggleRevealKeys() {
+    const next = !keysRevealed;
+    const res = await fetch(`/api/settings/ai-keys${next ? "?reveal=1" : ""}`, { cache: "no-store" });
+    const data = await res.json();
+    if (data.keys) { setAiKeys(data.keys); setKeysRevealed(next); }
+  }
+
+  async function addKey(provider: "gemini" | "groq") {
+    const key = keyInput[provider].trim();
+    if (!key) return;
+    setKeyMsg("");
+    const res = await fetch("/api/settings/ai-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, key }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setKeyMsg(data.error || "Couldn't save the key"); return; }
+    setAiKeys(data.keys); setKeysRevealed(false);
+    setKeyInput((p) => ({ ...p, [provider]: "" }));
+    setKeyMsg("Key saved to your account — works on all your devices.");
+  }
+
+  async function deleteKey(provider: "gemini" | "groq", index: number) {
+    const res = await fetch("/api/settings/ai-keys", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, index }),
+    });
+    const data = await res.json();
+    if (data.keys) { setAiKeys(data.keys); setKeysRevealed(false); }
+  }
 
   async function uploadResumes(files: FileList | null) {
     if (!files || !files.length) return;
@@ -287,6 +330,83 @@ export default function JobsPage() {
         </p>
         {msg && <p className="text-xs text-teal-300 mt-2">{msg}</p>}
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      </div>
+
+      {/* Per-account AI keys — encrypted, synced, rotated on quota */}
+      <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 mb-6 overflow-hidden">
+        <button
+          onClick={() => setKeysOpen((o) => !o)}
+          className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-slate-800/40 transition"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-white">
+            <KeyRound size={15} className="text-teal-400" />
+            AI API keys
+            <span className="text-[11px] font-normal text-slate-500">
+              {aiKeys.gemini.length} Gemini · {aiKeys.groq.length} Groq · stored encrypted on your account
+            </span>
+          </span>
+          {keysOpen ? <ChevronUp size={15} className="text-slate-500" /> : <ChevronDown size={15} className="text-slate-500" />}
+        </button>
+        {keysOpen && (
+          <div className="px-4 pb-4 border-t border-slate-700/40 pt-3 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-slate-500">
+                Your keys power job search and email drafts on any device you sign in from. Add several per provider —
+                when one runs out of daily quota, the next takes over automatically.
+              </p>
+              {(aiKeys.gemini.length > 0 || aiKeys.groq.length > 0) && (
+                <button
+                  onClick={toggleRevealKeys}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300 hover:text-teal-300 hover:border-teal-500/40 transition"
+                >
+                  {keysRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
+                  {keysRevealed ? "Hide" : "Show full keys"}
+                </button>
+              )}
+            </div>
+            {keyMsg && <p className="text-xs text-teal-300">{keyMsg}</p>}
+            {(["gemini", "groq"] as const).map((provider) => (
+              <div key={provider}>
+                <p className="text-xs font-semibold text-slate-300 mb-1.5">
+                  {provider === "gemini" ? "Gemini (primary)" : "Groq (backup)"}
+                  <span className="text-slate-600 font-normal"> — {provider === "gemini" ? "aistudio.google.com/apikey" : "console.groq.com/keys"}</span>
+                </p>
+                <div className="space-y-1.5">
+                  {aiKeys[provider].map((k, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-1.5">
+                      <code className="text-xs text-slate-300 flex-1 truncate select-text">{k}</code>
+                      {keysRevealed && (
+                        <button onClick={() => copyText(k)} title="Copy key" className="text-slate-500 hover:text-teal-300 transition">
+                          <Copy size={12} />
+                        </button>
+                      )}
+                      <button onClick={() => deleteKey(provider, i)} title="Remove key" className="text-slate-500 hover:text-red-400 transition">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex gap-2">
+                    <input
+                      className="input-field !py-1.5 text-xs"
+                      type="password"
+                      placeholder={provider === "gemini" ? "AIza..." : "gsk_..."}
+                      value={keyInput[provider]}
+                      onChange={(e) => setKeyInput((p) => ({ ...p, [provider]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === "Enter") addKey(provider); }}
+                    />
+                    <button
+                      onClick={() => addKey(provider)}
+                      disabled={!keyInput[provider].trim()}
+                      className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-200 text-xs hover:bg-teal-500/20 transition disabled:opacity-40"
+                    >
+                      <Plus size={12} /> Add
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Resumes for one-click apply — upload once, stored permanently */}
