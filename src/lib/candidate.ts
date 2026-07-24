@@ -12,13 +12,13 @@ export const CANDIDATE_FACTS = {
   name: "Meet Patel",
   location: "Ahmedabad, India",
   current_role: "Software Developer, NETAI",
-  experience: "about one year of professional experience",
+  experience: "about a year and a half of professional experience",
   projects: [
     {
       id: "mcp_agent",
       summary:
-        "a production ReAct agent that plans over 30+ typed tools served through Model Context Protocol servers, streams results to the UI over SSE, and runs against OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface",
-      tags: ["llm", "agents", "mcp", "langchain", "tool-calling", "streaming"],
+        "a production ReAct agent that plans over 30+ typed tools served through Model Context Protocol servers, streams results to the UI over SSE, runs against OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface, and correlates alarm root causes over the live network-topology graph with embedding-based tool retrieval",
+      tags: ["llm", "agents", "mcp", "langchain", "tool-calling", "streaming", "rag", "embeddings"],
     },
     {
       id: "rag_pdf",
@@ -50,12 +50,19 @@ export const CANDIDATE_FACTS = {
         "site-scoped role-based access control giving fine-grained multi-tenant authorization across the platform",
       tags: ["backend", "auth", "multi-tenant"],
     },
+    {
+      id: "radius",
+      summary:
+        "a centralised RADIUS service for authentication, authorization and accounting (AAA), covering protocol handling, session-lifecycle management and an accounting-record pipeline into ClickHouse",
+      tags: ["backend", "auth", "networking", "radius", "aaa", "protocols"],
+    },
   ] as CandidateProject[],
   stack: [
     "Python", "FastAPI", "Django", "LangChain", "MCP", "FAISS", "Kafka",
-    "ClickHouse", "Redis", "Celery", "PostgreSQL", "MySQL", "Docker", "Nginx", "Prometheus",
+    "ClickHouse", "Redis", "Celery", "SQLAlchemy", "PostgreSQL", "MySQL",
+    "Docker", "Nginx", "Prometheus", "VictoriaMetrics",
   ],
-  education: "B.E. Information Technology, LDRP Institute of Technology & Research, 2025",
+  education: "B.E. Information Technology, LDRP Institute of Technology & Research, 2025 (CGPA 8.10)",
 };
 
 export const SIGNATURE = `Meet Patel
@@ -107,7 +114,7 @@ export function renderOutreachBody(opts: {
 
 I build systems that run in production, not demos. At NETAI I own ${opts.leadProject.summary}.${second}
 
-About a year of this, and I'd like to do it somewhere it's the core of the product.
+A year and a half of this, and I'd like to do it somewhere it's the core of the product.
 
 If you're hiring, could I have 15 minutes?
 
@@ -132,7 +139,7 @@ export function renderRoleTemplateBody(format: "ai" | "backend", opts: {
 
 I build LLM agents that run in production, not demos. At NETAI I own our network-operations agent: a ReAct loop that plans over 30+ typed tools served through MCP servers, streams results to the UI over SSE, and runs against OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface. I also built the FAISS RAG pipeline and the FastAPI/Kafka/ClickHouse backend underneath it.
 
-A year of this, and I'd like to do it somewhere the agent is the product.
+A year and a half of this, and I'd like to do it somewhere the agent is the product.
 
 Are you hiring? Resume attached.
 
@@ -179,7 +186,7 @@ export function renderFollowUpBody(opts: {
 
 I wanted to follow up on my earlier email${about}, in case it got buried.
 
-A quick recap: over the past year I have built production LLM systems — an MCP tool-calling agent, a Retrieval-Augmented Generation pipeline, and the FastAPI/Kafka/ClickHouse backend underneath them. I remain very interested in ${interest}.
+A quick recap: over the past year and a half I have built production LLM systems — an MCP tool-calling agent, a Retrieval-Augmented Generation pipeline, and the FastAPI/Kafka/ClickHouse backend underneath them. I remain very interested in ${interest}.
 
 If the timing isn't right, no problem at all — a short note either way would be much appreciated.
 

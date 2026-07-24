@@ -230,7 +230,7 @@ export function alreadyContacted(history: SendRecord[], email: string, withinDay
 
 // Bump this whenever DEFAULT_TEMPLATES content changes — server migration runs
 // on next load (see migrateTemplatesIfNeeded in jobApp.ts).
-export const TEMPLATES_SEED_VERSION = 6;
+export const TEMPLATES_SEED_VERSION = 7;
 
 // Names of retired templates removed by the v5 migration. The old bodies opened
 // "Dear Hiring Team / I hope this message finds you well" — the exact pattern
@@ -255,7 +255,7 @@ export const DEFAULT_TEMPLATES: Omit<Template, "id" | "createdAt" | "updatedAt">
 
 I build LLM agents that run in production, not demos. At NETAI I own our network-operations agent: a ReAct loop that plans over 30+ typed tools served through MCP servers, streams results to the UI over SSE, and runs against OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface. I also built the FAISS RAG pipeline and the FastAPI/Kafka/ClickHouse backend underneath it.
 
-A year of this, and I'd like to do it somewhere the agent is the product.
+A year and a half of this, and I'd like to do it somewhere the agent is the product.
 
 Are you hiring? Resume attached.
 

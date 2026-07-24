@@ -4,7 +4,7 @@ This file matches what the app actually does now. Two ways to write an email,
 one rule for which resume goes with which, and a one-click follow-up.
 
 Your one differentiator, used in every message: **you have shipped an LLM agent
-that runs in production.** Almost every other candidate with ~1 year of
+that runs in production.** Almost every other candidate with 1–2 years of
 experience has shipped a tutorial. Lead with that, every time.
 
 ---
@@ -61,6 +61,10 @@ recruiters see the filename.
    too deep to matter.
 5. **Send Tuesday–Thursday, 9:30–11:00 AM IST.** Monday and Friday get buried.
 6. **One follow-up. Ever.** Day 6, from the Follow-ups page. Then stop.
+7. **Keep emails 50–125 words.** Verified across tens of millions of measured
+   emails (Boomerang ~40M, Hunter 34M, Overloop 1.2M): this length gets roughly
+   double the replies of 200+-word emails. The app's templates already sit in
+   this range — resist the urge to add paragraphs.
 
 ---
 
@@ -79,7 +83,7 @@ OpenAI, Anthropic, Gemini and a self-hosted Mistral behind one interface. I
 also built the FAISS RAG pipeline and the FastAPI/Kafka/ClickHouse backend
 underneath it.
 
-A year of this, and I'd like to do it somewhere the agent is the product.
+A year and a half of this, and I'd like to do it somewhere the agent is the product.
 
 Are you hiring? Resume attached.
 
@@ -131,7 +135,7 @@ with no reply. One click:
 > I wanted to follow up on my earlier email regarding the [ROLE] position at
 > [COMPANY], in case it got buried.
 >
-> A quick recap: over the past year at NETAI I have built production LLM
+> A quick recap: over the past year and a half I have built production LLM
 > systems — an MCP tool-calling agent, a Retrieval-Augmented Generation
 > pipeline, and the FastAPI/Kafka/ClickHouse backend underneath them. I remain
 > very interested in [COMPANY].
@@ -176,7 +180,7 @@ actually know):**
 > I'm looking to move into LLM/agent engineering, and I saw [COMPANY] has an
 > opening for [ROLE]. Would you be comfortable referring me?
 >
-> For context: I'm at NETAI, and this past year I built a production ReAct
+> For context: I'm at NETAI, and over the past year and a half I built a production ReAct
 > agent over 30+ tools served through MCP servers, a FAISS RAG pipeline on a
 > self-hosted model, and the FastAPI/Kafka/ClickHouse backend for both.
 >

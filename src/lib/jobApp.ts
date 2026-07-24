@@ -111,8 +111,13 @@ export async function migrateTemplatesIfNeeded(email: string): Promise<number> {
     if (!existing) {
       await upsertTemplate(email, def);
       added++;
-    } else if (existing.roleType !== def.roleType) {
-      await upsertTemplate(email, { id: existing.id, roleType: def.roleType });
+    } else {
+      const patch: Partial<Template> = { id: existing.id };
+      if (existing.roleType !== def.roleType) patch.roleType = def.roleType;
+      // v7: refresh a seeded body the user never edited ("A year of this" is the
+      // old seeded phrasing) so experience reads a year and a half everywhere.
+      if (existing.body.includes("A year of this,") && existing.body !== def.body) patch.body = def.body;
+      if (Object.keys(patch).length > 1) await upsertTemplate(email, patch);
     }
   }
   await kvSet(kTemplatesSeedVer(email), TEMPLATES_SEED_VERSION);
