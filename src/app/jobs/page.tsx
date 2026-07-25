@@ -142,17 +142,22 @@ export default function JobsPage() {
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d.resumes)) setJfResumes(d.resumes); })
       .catch(() => {});
-    fetch("/api/settings/ai-keys", { cache: "no-store" })
+    // Keys are stored encrypted server-side; the UI shows them decrypted to
+    // their owner by default (a Hide toggle is available).
+    fetch("/api/settings/ai-keys?reveal=1", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (d.keys) setAiKeys(d.keys); })
+      .then((d) => { if (d.keys) { setAiKeys(d.keys); setKeysRevealed(true); } })
       .catch(() => {});
   }, []);
 
-  async function toggleRevealKeys() {
-    const next = !keysRevealed;
-    const res = await fetch(`/api/settings/ai-keys${next ? "?reveal=1" : ""}`, { cache: "no-store" });
+  async function refreshKeys(reveal: boolean) {
+    const res = await fetch(`/api/settings/ai-keys${reveal ? "?reveal=1" : ""}`, { cache: "no-store" });
     const data = await res.json();
-    if (data.keys) { setAiKeys(data.keys); setKeysRevealed(next); }
+    if (data.keys) { setAiKeys(data.keys); setKeysRevealed(reveal); }
+  }
+
+  async function toggleRevealKeys() {
+    await refreshKeys(!keysRevealed);
   }
 
   async function addKey(provider: "gemini" | "groq") {
@@ -166,19 +171,18 @@ export default function JobsPage() {
     });
     const data = await res.json();
     if (!res.ok) { setKeyMsg(data.error || "Couldn't save the key"); return; }
-    setAiKeys(data.keys); setKeysRevealed(false);
+    await refreshKeys(true);
     setKeyInput((p) => ({ ...p, [provider]: "" }));
-    setKeyMsg("Key saved to your account — works on all your devices.");
+    setKeyMsg("Key saved to your account (encrypted) — works on all your devices.");
   }
 
   async function deleteKey(provider: "gemini" | "groq", index: number) {
-    const res = await fetch("/api/settings/ai-keys", {
+    await fetch("/api/settings/ai-keys", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider, index }),
     });
-    const data = await res.json();
-    if (data.keys) { setAiKeys(data.keys); setKeysRevealed(false); }
+    await refreshKeys(true);
   }
 
   async function uploadResumes(files: FileList | null) {

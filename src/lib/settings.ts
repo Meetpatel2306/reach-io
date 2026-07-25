@@ -135,32 +135,13 @@ function emptyAiKeys(): StoredAiKeys {
   return { gemini: [], groq: [] };
 }
 
-// One-time bootstrap: if this user has no stored keys yet but the deployment
-// still has env keys, encrypt those into the user's own record. After this,
-// the env vars are dead weight and can be removed from the environment.
-async function importEnvKeysIfNeeded(email: string, s: UserSettings): Promise<void> {
-  const cur = s.aiKeys || emptyAiKeys();
-  if (cur.importedFromEnv || cur.gemini.length || cur.groq.length) return;
-  const envGemini = process.env.GEMINI_API_KEY;
-  const envGroq = process.env.GROQ_API_KEY;
-  if (!envGemini && !envGroq) return;
-  s.aiKeys = {
-    gemini: envGemini ? [encryptSecret(envGemini)] : [],
-    groq: envGroq ? [encryptSecret(envGroq)] : [],
-    importedFromEnv: true,
-  };
-  await save(email, s);
-}
-
 export async function addAiKey(email: string, provider: AiProvider, key: string): Promise<void> {
   const s = await load(email);
-  await importEnvKeysIfNeeded(email, s);
   const cur = s.aiKeys || emptyAiKeys();
   // Skip exact duplicates (compare decrypted).
   const existing = cur[provider].map((e) => decryptSecret(e)).filter(Boolean);
   if (existing.includes(key.trim())) return;
   cur[provider] = [...cur[provider], encryptSecret(key.trim())];
-  cur.importedFromEnv = true; // any manual add also ends the bootstrap phase
   s.aiKeys = cur;
   await save(email, s);
 }
@@ -184,18 +165,17 @@ export async function getAiKeysView(
   reveal = false,
 ): Promise<{ gemini: string[]; groq: string[] }> {
   const s = await load(email);
-  await importEnvKeysIfNeeded(email, s);
   const cur = s.aiKeys || emptyAiKeys();
   const view = (list: string[]) =>
     list.map((e) => decryptSecret(e)).filter(Boolean).map((k) => (reveal ? k : maskKey(k)));
   return { gemini: view(cur.gemini), groq: view(cur.groq) };
 }
 
-// Decrypted keys for actual AI calls. Runtime reads ONLY the user's stored
-// keys — env vars are just the one-time import source above.
+// Decrypted keys for actual AI calls. The user's stored keys are the ONLY
+// source — there is no environment fallback: every user brings their own keys
+// via the AI keys section on the Jobs page.
 export async function getAiKeysForUse(email: string): Promise<{ gemini: string[]; groq: string[] }> {
   const s = await load(email);
-  await importEnvKeysIfNeeded(email, s);
   const cur = s.aiKeys || emptyAiKeys();
   return {
     gemini: cur.gemini.map((e) => decryptSecret(e)).filter(Boolean),
