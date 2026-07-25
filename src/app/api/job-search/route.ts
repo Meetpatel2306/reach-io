@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/app/api/jobs/_helpers";
-import { searchJobs } from "@/lib/jobSearch";
+import { searchJobs, parseJobsText, type FoundJob } from "@/lib/jobSearch";
 import { appendLeads, clearLeads, listLeads } from "@/lib/jobLeads";
 import { getAiKeysForUse } from "@/lib/settings";
+import { claudeLocalAvailable, claudeSearchJobs } from "@/lib/claudeLocal";
+import { getSession } from "@/lib/auth";
 
 export const maxDuration = 60;
 
@@ -24,8 +26,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const aiKeys = await getAiKeysForUse(auth.email);
-    const { jobs, provider } = await searchJobs(query, location, aiKeys);
+    // Local Claude first — ONLY when running on the owner's machine AND the
+    // signed-in user is the admin. Everyone else / the deployed site goes
+    // straight to the normal per-user Gemini/Groq flow.
+    let jobs: FoundJob[] | null = null;
+    let provider = "";
+    const session = await getSession();
+    if (session.role === "admin" && claudeLocalAvailable()) {
+      try {
+        jobs = parseJobsText(await claudeSearchJobs(query, location));
+        provider = "claude";
+      } catch {
+        jobs = null; // any Claude failure → normal flow below
+      }
+    }
+
+    if (!jobs) {
+      const aiKeys = await getAiKeysForUse(auth.email);
+      ({ jobs, provider } = await searchJobs(query, location, aiKeys));
+    }
     const { added, skipped } = await appendLeads(auth.email, jobs, query);
     const leads = await listLeads(auth.email);
 

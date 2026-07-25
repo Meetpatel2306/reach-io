@@ -23,7 +23,7 @@ export interface FoundJob {
 // Phrasing matters for Groq's compound agent: "Search the web" reliably
 // triggers its search tool; "Search Google" or aggressive commands make it
 // refuse ("I can't search Google" / "I can't fulfill that request").
-const SEARCH_PROMPT = (query: string, location: string) => `Search the web for REAL job postings that are currently open and match:
+export const SEARCH_PROMPT = (query: string, location: string) => `Search the web for REAL job postings that are currently open and match:
 
 ROLE QUERY: ${query}
 LOCATION: ${location || "India or Remote"}
@@ -187,8 +187,9 @@ function cleanStr(v: unknown, max = 300): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
 }
 
-export async function searchJobs(query: string, location: string, keys: AiKeys): Promise<{ jobs: FoundJob[]; provider: string }> {
-  const { text, provider } = await searchWithFallback(SEARCH_PROMPT(query, location), keys);
+// Validate any model's raw text into clean job rows — shared by the normal
+// Gemini/Groq path and the local Claude path so every source meets the same bar.
+export function parseJobsText(text: string): FoundJob[] {
   const raw = extractJson<unknown[]>(text);
   if (!Array.isArray(raw)) throw new Error("Model did not return a job list");
   const jobs: FoundJob[] = [];
@@ -219,7 +220,12 @@ export async function searchJobs(query: string, location: string, keys: AiKeys):
     }
     jobs.push(job);
   }
-  return { jobs, provider };
+  return jobs;
+}
+
+export async function searchJobs(query: string, location: string, keys: AiKeys): Promise<{ jobs: FoundJob[]; provider: string }> {
+  const { text, provider } = await searchWithFallback(SEARCH_PROMPT(query, location), keys);
+  return { jobs: parseJobsText(text), provider };
 }
 
 export async function findContact(company: string, role: string, keys: AiKeys): Promise<{ careerPage: string; contactEmail: string; contactPhone: string; provider: string }> {

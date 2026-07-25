@@ -1,0 +1,45 @@
+// LOCAL-ONLY Claude job search via the Claude Agent SDK.
+//
+// This runs the Claude Code engine as a process on the machine hosting the
+// app, authenticated by the owner's own Claude subscription login. That is
+// only legitimate — and only technically possible — when the app runs locally
+// on the owner's PC (`npm run dev`). It is therefore triple-gated:
+//
+//   1. Never on Vercel (process.env.VERCEL) — the deployed site can't use it
+//   2. Admin account only — regular users never touch the owner's session
+//   3. Job search only — no other feature calls this module
+//
+// The ONLY capability granted is web search/fetch: no file access, no shell,
+// no browser control, no artifacts — the tool allowlist below is exhaustive.
+// Any failure falls back to the normal Gemini/Groq flow.
+
+import { SEARCH_PROMPT } from "./jobSearch";
+
+export function claudeLocalAvailable(): boolean {
+  return !process.env.VERCEL && process.env.CLAUDE_LOCAL !== "0";
+}
+
+export async function claudeSearchJobs(query: string, location: string): Promise<string> {
+  // Dynamic import keeps the SDK completely out of the serverless bundle.
+  const { query: claude } = await import("@anthropic-ai/claude-agent-sdk");
+
+  const prompt =
+    SEARCH_PROMPT(query, location) +
+    "\n\nIMPORTANT: your final message must be ONLY the JSON array — no prose before or after.";
+
+  let result = "";
+  for await (const message of claude({
+    prompt,
+    options: {
+      allowedTools: ["WebSearch", "WebFetch"],
+      maxTurns: 12,
+    },
+  })) {
+    if (message.type === "result") {
+      result = "result" in message && typeof message.result === "string" ? message.result : "";
+    }
+  }
+
+  if (!result) throw new Error("Local Claude session returned nothing");
+  return result;
+}

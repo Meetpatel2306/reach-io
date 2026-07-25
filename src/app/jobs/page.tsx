@@ -222,7 +222,11 @@ export default function JobsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Search failed");
       setLeads(data.leads || []);
-      setMsg(`Found ${data.found} · ${data.added} new added${data.skipped ? ` · ${data.skipped} already in your table` : ""} — via ${data.provider === "groq" ? "Groq (backup)" : "Gemini + Google"}`);
+      const providerLabel =
+        data.provider === "claude" ? "Claude (your local session)"
+        : data.provider === "groq" ? "Groq (backup)"
+        : "Gemini + Google";
+      setMsg(`Found ${data.found} · ${data.added} new added${data.skipped ? ` · ${data.skipped} already in your table` : ""} — via ${providerLabel}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
