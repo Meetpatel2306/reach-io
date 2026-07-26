@@ -36,10 +36,11 @@ export async function POST(req: NextRequest) {
     // (older login cookies may predate the role field).
     const isAdmin =
       session.role === "admin" || auth.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-    if (claudeLocalAvailable()) {
-      console.log(`[claude-local] gate: local=yes admin=${isAdmin} (email=${auth.email})`);
-    }
+    console.log(
+      `[claude-local] gate: local=${claudeLocalAvailable()} admin=${isAdmin} env=${process.env.NODE_ENV} (email=${auth.email})`,
+    );
     if (isAdmin && claudeLocalAvailable()) {
+      console.log("[claude-local] running Claude search — this takes 30-60s...");
       try {
         jobs = parseJobsText(await claudeSearchJobs(query, location));
         provider = "claude";
