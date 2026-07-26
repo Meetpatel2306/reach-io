@@ -4,7 +4,7 @@ import { searchJobs, parseJobsText, type FoundJob } from "@/lib/jobSearch";
 import { appendLeads, clearLeads, listLeads } from "@/lib/jobLeads";
 import { getAiKeysForUse } from "@/lib/settings";
 import { claudeLocalAvailable, claudeSearchJobs } from "@/lib/claudeLocal";
-import { getSession } from "@/lib/auth";
+import { ADMIN_EMAIL, getSession } from "@/lib/auth";
 
 export const maxDuration = 60;
 
@@ -32,7 +32,14 @@ export async function POST(req: NextRequest) {
     let jobs: FoundJob[] | null = null;
     let provider = "";
     const session = await getSession();
-    if (session.role === "admin" && claudeLocalAvailable()) {
+    // Robust admin check: role from the session, or the hardcoded admin email
+    // (older login cookies may predate the role field).
+    const isAdmin =
+      session.role === "admin" || auth.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    if (claudeLocalAvailable()) {
+      console.log(`[claude-local] gate: local=yes admin=${isAdmin} (email=${auth.email})`);
+    }
+    if (isAdmin && claudeLocalAvailable()) {
       try {
         jobs = parseJobsText(await claudeSearchJobs(query, location));
         provider = "claude";
