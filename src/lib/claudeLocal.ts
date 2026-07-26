@@ -18,10 +18,10 @@ import { SEARCH_PROMPT } from "./jobSearch";
 export function claudeLocalAvailable(): boolean {
   if (process.env.CLAUDE_LOCAL === "0") return false; // explicit kill switch
   if (process.env.CLAUDE_LOCAL === "1") return true; // explicit opt-in (e.g. local `next start`)
-  // `next dev` always runs with NODE_ENV=development; Vercel serves production
-  // builds — so dev mode is a reliable "owner's machine" signal that can't be
-  // fooled by a VERCEL variable sitting in a pulled-down .env file.
-  return process.env.NODE_ENV === "development" && !process.env.VERCEL;
+  // `next dev` only ever runs on a developer's own machine — Vercel serves
+  // production builds (NODE_ENV=production). Dev mode alone is the signal;
+  // a VERCEL variable sitting in a pulled-down local .env must not fool it.
+  return process.env.NODE_ENV === "development";
 }
 
 export async function claudeSearchJobs(query: string, location: string): Promise<string> {
