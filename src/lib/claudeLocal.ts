@@ -28,18 +28,23 @@ export async function claudeSearchJobs(query: string, location: string): Promise
     "\n\nIMPORTANT: your final message must be ONLY the JSON array — no prose before or after.";
 
   let result = "";
+  let subtype = "";
   for await (const message of claude({
     prompt,
     options: {
       allowedTools: ["WebSearch", "WebFetch"],
-      maxTurns: 12,
+      // Headless run — nobody can answer permission prompts, so pre-approve.
+      // Safe: the allowlist above is the complete set of capabilities anyway.
+      permissionMode: "bypassPermissions",
+      maxTurns: 16,
     },
   })) {
     if (message.type === "result") {
+      subtype = "subtype" in message ? String(message.subtype) : "";
       result = "result" in message && typeof message.result === "string" ? message.result : "";
     }
   }
 
-  if (!result) throw new Error("Local Claude session returned nothing");
+  if (!result) throw new Error(`Local Claude session returned nothing (${subtype || "no result"})`);
   return result;
 }

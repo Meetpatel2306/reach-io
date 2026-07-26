@@ -36,8 +36,10 @@ export async function POST(req: NextRequest) {
       try {
         jobs = parseJobsText(await claudeSearchJobs(query, location));
         provider = "claude";
-      } catch {
-        jobs = null; // any Claude failure → normal flow below
+      } catch (e) {
+        // Visible in the dev-server terminal so local failures are debuggable.
+        console.error("[claude-local] fell back to Gemini/Groq:", e instanceof Error ? e.message : e);
+        jobs = null;
       }
     }
 
