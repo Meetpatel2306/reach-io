@@ -20,6 +20,10 @@ const PUBLIC_PATHS = [
   "/api/config", // public config (no secrets)
   "/api/upload-resume", // optional: could require auth
   "/api/system-status", // public — shows config presence (no values)
+  // Vercel Cron sends no session cookie, so the scheduler would be redirected to
+  // /login and the job would never run. The route authorizes itself instead
+  // (CRON_SECRET bearer token, admin session, or the platform's cron header).
+  "/api/cron",
   "/privacy", // public legal page (Google OAuth verification)
   "/terms", // public legal page
 ];
