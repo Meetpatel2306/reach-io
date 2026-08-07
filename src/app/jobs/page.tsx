@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Search, Loader2, Briefcase, ExternalLink, Trash2, Pencil, Check, X,
   Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck, SendHorizonal,
-  FileText, Upload, KeyRound, Eye, EyeOff, Plus,
+  FileText, Upload, KeyRound, Eye, EyeOff, Plus, MapPin,
 } from "lucide-react";
 import type { JobLead, LeadStatus } from "@/lib/jobLeads";
 
@@ -97,6 +97,8 @@ export default function JobsPage() {
   const [leads, setLeads] = useState<JobLead[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [searching, setSearching] = useState(false);
+  // Which preset button is mid-search, so only that one shows a spinner.
+  const [scopeBusy, setScopeBusy] = useState<"" | "gujarat" | "india">("");
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | LeadStatus>("all");
@@ -209,15 +211,19 @@ export default function JobsPage() {
     if (Array.isArray(data.resumes)) setJfResumes(data.resumes);
   }
 
-  async function runSearch() {
-    if (query.trim().length < 3 || searching) return;
-    setSearching(true); setError(""); setMsg("");
-    localStorage.setItem("jobfinder-query", query.trim());
+  // scope set → one-click preset (no typed query needed); otherwise the typed box.
+  async function runSearch(scope?: "gujarat" | "india") {
+    if (searching) return;
+    if (!scope && query.trim().length < 3) return;
+    setSearching(true); setError(""); setMsg(""); setScopeBusy(scope || "");
+    if (!scope) localStorage.setItem("jobfinder-query", query.trim());
     try {
       const res = await fetch("/api/job-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim(), location }),
+        body: scope
+          ? JSON.stringify({ scope })
+          : JSON.stringify({ query: query.trim(), location }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Search failed");
@@ -231,6 +237,7 @@ export default function JobsPage() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSearching(false);
+      setScopeBusy("");
     }
   }
 
@@ -324,14 +331,40 @@ export default function JobsPage() {
             <option value="">Anywhere</option>
           </select>
           <button
-            onClick={runSearch}
+            onClick={() => runSearch()}
             disabled={searching || query.trim().length < 3}
             className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition disabled:opacity-40"
           >
-            {searching ? <Loader2 size={16} className="animate-spin" /> : <Radar size={16} />}
-            {searching ? "Searching Google..." : "Search Jobs"}
+            {searching && !scopeBusy ? <Loader2 size={16} className="animate-spin" /> : <Radar size={16} />}
+            {searching && !scopeBusy ? "Searching Google..." : "Search Jobs"}
           </button>
         </div>
+
+        {/* One-click presets — no typing. Each runs the curated 30-day,
+            0-4 years, newest-first search for its region. */}
+        <div className="flex flex-col sm:flex-row gap-2 mt-3 pt-3 border-t border-teal-500/15">
+          <button
+            onClick={() => runSearch("gujarat")}
+            disabled={searching}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-500/15 border border-violet-400/30 text-violet-200 text-sm font-semibold hover:bg-violet-500/25 active:scale-[0.98] transition disabled:opacity-40"
+          >
+            {scopeBusy === "gujarat" ? <Loader2 size={15} className="animate-spin" /> : <MapPin size={15} />}
+            {scopeBusy === "gujarat" ? "Searching Ahmedabad…" : "Find in Ahmedabad"}
+          </button>
+          <button
+            onClick={() => runSearch("india")}
+            disabled={searching}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-500/15 border border-indigo-400/30 text-indigo-200 text-sm font-semibold hover:bg-indigo-500/25 active:scale-[0.98] transition disabled:opacity-40"
+          >
+            {scopeBusy === "india" ? <Loader2 size={15} className="animate-spin" /> : <Globe size={15} />}
+            {scopeBusy === "india" ? "Searching India…" : "Find across India"}
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-2">
+          Presets need no typing: last 30 days, 0-4 years, newest first, senior/lead titles
+          filtered out. Ahmedabad also covers Gandhinagar, GIFT City and Vadodara; India
+          includes remote roles open to India.
+        </p>
         <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1">
           <Sparkles size={11} className="text-teal-400" />
           The AI runs real Google searches and returns only postings with a direct link. New finds are added to your table below; duplicates are skipped.

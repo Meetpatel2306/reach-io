@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/app/api/jobs/_helpers";
-import { searchJobs, parseJobsText, type FoundJob } from "@/lib/jobSearch";
+import { searchJobs, parseJobsText, SCOPE_PROMPT, type FoundJob, type SearchScope } from "@/lib/jobSearch";
 import { appendLeads, clearLeads, listLeads } from "@/lib/jobLeads";
 import { getAiKeysForUse } from "@/lib/settings";
 import { claudeLocalAvailable, claudeSearchJobs } from "@/lib/claudeLocal";
@@ -19,12 +19,22 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const query = String(body.query || "").trim();
     const location = String(body.location || "").trim();
-    if (query.length < 3) {
+    // One-click presets ("gujarat" / "india") carry their own curated prompt, so
+    // they need no typed query — the whole point is that they take zero input.
+    const scope: SearchScope | undefined =
+      body.scope === "gujarat" || body.scope === "india" ? body.scope : undefined;
+    if (!scope && query.length < 3) {
       return NextResponse.json(
         { error: 'Type what you\'re looking for, e.g. "python developer 1 year experience".' },
         { status: 400 },
       );
     }
+    // What the leads table records this search as.
+    const searchLabel = scope
+      ? scope === "gujarat"
+        ? "Ahmedabad · Gandhinagar · Vadodara"
+        : "Pan-India + Remote"
+      : query;
 
     // Local Claude first — ONLY when running on the owner's machine AND the
     // signed-in user is the admin. Everyone else / the deployed site goes
@@ -42,7 +52,7 @@ export async function POST(req: NextRequest) {
     if (isAdmin && claudeLocalAvailable()) {
       console.log("[claude-local] running Claude search — this takes 30-60s...");
       try {
-        jobs = parseJobsText(await claudeSearchJobs(query, location));
+        jobs = parseJobsText(await claudeSearchJobs(query, location, scope));
         provider = "claude";
       } catch (e) {
         // Visible in the dev-server terminal so local failures are debuggable.
@@ -53,9 +63,9 @@ export async function POST(req: NextRequest) {
 
     if (!jobs) {
       const aiKeys = await getAiKeysForUse(auth.email);
-      ({ jobs, provider } = await searchJobs(query, location, aiKeys));
+      ({ jobs, provider } = await searchJobs(query, location, aiKeys, scope));
     }
-    const { added, skipped } = await appendLeads(auth.email, jobs, query);
+    const { added, skipped } = await appendLeads(auth.email, jobs, searchLabel);
     const leads = await listLeads(auth.email);
 
     return NextResponse.json({ found: jobs.length, added: added.length, skipped, provider, leads });

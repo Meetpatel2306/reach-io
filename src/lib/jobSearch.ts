@@ -4,6 +4,7 @@
 // Both are asked for strict JSON; we validate and keep only rows with a real link.
 
 import { geminiGenerate, geminiTextFrom } from "./gemini";
+import { CANDIDATE_FACTS } from "./candidate";
 
 export interface FoundJob {
   company: string;
@@ -45,6 +46,88 @@ Return ONLY a JSON array (no markdown, no commentary). Each element exactly:
   "jd": "3-4 line summary, max 60 words", "applyLink": "direct URL",
   "careerPage": "", "contactEmail": "", "contactPhone": "",
   "postedWhen": "e.g. 2 days ago or \\"\\"", "source": "domain the posting is on"
+}`;
+
+// ---------------------------------------------------------------------------
+// One-click preset searches.
+//
+// The manual box above answers whatever you type. These two answer the question
+// you actually ask every morning — "what opened near me?" and "what opened
+// anywhere?" — with the search discipline that free-text prompting keeps losing:
+// a 30-day window (a 7-day cut leaves Ahmedabad with almost nothing), an
+// experience ceiling, and a hard ban on inventing a row to pad the list.
+// ---------------------------------------------------------------------------
+
+export type SearchScope = "gujarat" | "india";
+
+const SCOPE_AREA: Record<SearchScope, string> = {
+  gujarat:
+    "Ahmedabad, Gandhinagar (including GIFT City) and Vadodara, Gujarat. " +
+    "Search Vadodara as its own separate query — it is a much smaller market than " +
+    "Ahmedabad and gets buried inside a generic 'Gujarat' search. Also include " +
+    "fully-remote roles posted by Gujarat-based companies.",
+  india:
+    "anywhere in India, plus fully-remote roles that accept India-based candidates " +
+    "(not 'US remote only'). Prioritise, in order: Remote · Bengaluru · Pune · " +
+    "Hyderabad · Gurugram/Noida/Delhi NCR · Mumbai · Chennai · Ahmedabad — but do " +
+    "not exclude other cities.",
+};
+
+const SCOPE_TITLES =
+  "AI Engineer · GenAI / Generative AI Engineer · Applied AI Engineer · Agentic AI " +
+  "Engineer · LLM Engineer · AI Solution Engineer · Associate AI Engineer · RAG " +
+  "Engineer · Forward Deployed Engineer · Python Developer · Python Backend " +
+  "Developer · Backend Engineer (Python) · Software Engineer (Python) · API " +
+  "Developer · AI/ML Engineer · Machine Learning Engineer (only when the role is " +
+  "Python/LLM engineering, not PhD-track research) · Data Engineer (only when " +
+  "Python + streaming, never pure SQL/BI)";
+
+export const SCOPE_PROMPT = (scope: SearchScope) => `Search the web for REAL, currently-open job postings in ${SCOPE_AREA[scope]}
+
+CANDIDATE: ~2 years experience. Stack: ${CANDIDATE_FACTS.stack.join(", ")}.
+Rare differentiators worth matching against a job description: production MCP
+tool-calling agents, agentic/ReAct systems, RAG pipelines, self-hosted and
+air-gapped LLMs, Kafka to ClickHouse streaming.
+
+TARGET TITLES: ${SCOPE_TITLES}
+
+TIME WINDOW — the last 30 days. Do NOT restrict to 7 days: Indian roles stay open
+for weeks and a one-week cut throws away most of the real opportunities. Put the
+age tier in "postedWhen": FRESH (0-7 days), RECENT (8-14 days), OPEN (15-30 days),
+each followed by the actual age, e.g. "FRESH · 3 days ago".
+
+EXPERIENCE — include roles asking 0 to 4 years, and roles that state no experience
+at all (those are often the best odds). EXCLUDE anything titled Senior, Sr., Lead,
+Principal, Staff, Architect, Manager, Head, Director or VP, unless the posting
+explicitly accepts 2 years or less. Exclude internships and unpaid roles.
+
+ALSO EXCLUDE: pure MLOps/DevOps, pure Data Science/statistics, BI/PowerBI/Tableau
+analyst, QA/testing, frontend-only, and PHP/.NET/Java-only roles. Skip staffing
+agencies that do not name the actual employer.
+
+SEARCH BREADTH — do not stop at one job board. Cover LinkedIn, Naukri, Indeed,
+Cutshort, Wellfound, Instahyre, Hirist, foundit, Glassdoor and Internshala, AND
+search applicant-tracking boards directly (Greenhouse, Lever, Ashby, Workable,
+SmartRecruiters) where postings appear before the aggregators scrape them and
+closed roles are actually removed. Also check company career pages directly.
+
+ORDER — newest first, most recently posted at the top.
+
+ACCURACY — this matters more than the length of the list:
+- Every row needs a real, working http(s) link to the posting itself.
+- Never invent a company, a salary, an experience range or a contact detail.
+  Use "" for anything you cannot find on a real page.
+- Never include a company just because it is well known or hired before — it must
+  have a live posting you actually found.
+- Return 8-15 jobs. If fewer genuinely qualify, return fewer. Do not pad the list.
+
+Return ONLY a JSON array (no markdown, no commentary). Each element exactly:
+{
+  "company": "", "role": "", "experience": "e.g. 0-2 years or \\"\\"",
+  "package": "salary if stated, else \\"\\"", "location": "city or Remote",
+  "jd": "3-4 line summary, max 60 words", "applyLink": "direct URL",
+  "careerPage": "", "contactEmail": "", "contactPhone": "",
+  "postedWhen": "e.g. FRESH · 3 days ago", "source": "domain the posting is on"
 }`;
 
 const CONTACT_PROMPT = (company: string, role: string) => `Search the web for the company "${company}" (which is hiring for "${role}").
@@ -223,8 +306,15 @@ export function parseJobsText(text: string): FoundJob[] {
   return jobs;
 }
 
-export async function searchJobs(query: string, location: string, keys: AiKeys): Promise<{ jobs: FoundJob[]; provider: string }> {
-  const { text, provider } = await searchWithFallback(SEARCH_PROMPT(query, location), keys);
+// scope set → run the curated preset; otherwise answer the typed query.
+export async function searchJobs(
+  query: string,
+  location: string,
+  keys: AiKeys,
+  scope?: SearchScope,
+): Promise<{ jobs: FoundJob[]; provider: string }> {
+  const prompt = scope ? SCOPE_PROMPT(scope) : SEARCH_PROMPT(query, location);
+  const { text, provider } = await searchWithFallback(prompt, keys);
   return { jobs: parseJobsText(text), provider };
 }
 

@@ -13,7 +13,7 @@
 // no browser control, no artifacts — the tool allowlist below is exhaustive.
 // Any failure falls back to the normal Gemini/Groq flow.
 
-import { SEARCH_PROMPT } from "./jobSearch";
+import { SEARCH_PROMPT, SCOPE_PROMPT, type SearchScope } from "./jobSearch";
 
 export function claudeLocalAvailable(): boolean {
   if (process.env.CLAUDE_LOCAL === "0") return false; // explicit kill switch
@@ -24,12 +24,16 @@ export function claudeLocalAvailable(): boolean {
   return process.env.NODE_ENV === "development";
 }
 
-export async function claudeSearchJobs(query: string, location: string): Promise<string> {
+export async function claudeSearchJobs(
+  query: string,
+  location: string,
+  scope?: SearchScope,
+): Promise<string> {
   // Dynamic import keeps the SDK completely out of the serverless bundle.
   const { query: claude } = await import("@anthropic-ai/claude-agent-sdk");
 
   const prompt =
-    SEARCH_PROMPT(query, location) +
+    (scope ? SCOPE_PROMPT(scope) : SEARCH_PROMPT(query, location)) +
     "\n\nIMPORTANT: your final message must be ONLY the JSON array — no prose before or after.";
 
   let result = "";
