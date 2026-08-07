@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_EMAIL, getSession } from "@/lib/auth";
 import { searchJobs } from "@/lib/jobSearch";
 import { appendLeads, type JobLead } from "@/lib/jobLeads";
-import { getAiKeysForUse } from "@/lib/settings";
+import { digestMinutes, getAiKeysForUse, getDailyDigest, istNow, markDigestSent } from "@/lib/settings";
 import { resolveTransport, sendOne } from "@/lib/mailer";
 
 // Daily Ahmedabad job digest.
@@ -65,7 +65,32 @@ export async function GET(req: NextRequest) {
   }
 
   const email = ADMIN_EMAIL;
+  // ?force=1 runs regardless of the schedule, for testing from the browser.
+  const force = new URL(req.url).searchParams.get("force") === "1";
+
   try {
+    // The schedule lives here, not in vercel.json: the platform ticks, and this
+    // decides whether the user's chosen hour has arrived. That is what makes the
+    // send time editable from the UI without a redeploy.
+    const digest_cfg = await getDailyDigest(email);
+    const { date, minutes } = istNow();
+    const wanted = digestMinutes(digest_cfg);
+    if (!force) {
+      if (!digest_cfg.enabled) {
+        return NextResponse.json({ ok: true, skipped: "disabled" });
+      }
+      if (digest_cfg.lastSentDate === date) {
+        return NextResponse.json({ ok: true, skipped: "already-sent-today", date });
+      }
+      // Fire at the chosen time or any later tick that day, so a delayed or
+      // missed scheduler tick still delivers rather than silently skipping.
+      // Changing the time clears lastSentDate, so a new time set later the same
+      // day sends that day too, and again every day after.
+      if (minutes < wanted) {
+        return NextResponse.json({ ok: true, skipped: "before-scheduled-time", minutes, wanted });
+      }
+    }
+
     const aiKeys = await getAiKeysForUse(email);
     if (!aiKeys.gemini.length && !aiKeys.groq.length) {
       // Not an error worth retrying — the account simply has no key yet.
@@ -94,6 +119,9 @@ export async function GET(req: NextRequest) {
       subject: `${added.length} new Ahmedabad job${added.length === 1 ? "" : "s"} — ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`,
       body: digest(added),
     });
+    // Only after the mail is actually away — a failed send must retry, not be
+    // marked done for the day.
+    await markDigestSent(email, date);
 
     return NextResponse.json({
       ok: true, found: jobs.length, added: added.length, skipped, provider, sent: true,

@@ -1,0 +1,47 @@
+name: Daily job digest
+
+# Ticks hourly and lets the app decide whether to act.
+#
+# Vercel Cron is the natural home for this, but Hobby accounts are capped at one
+# run per day — a single fixed tick, which would make the send time in the UI a
+# lie. GitHub Actions allows hourly schedules for free, so it pings the endpoint
+# every hour and /api/cron/daily-jobs decides: it sends only at the hour chosen
+# in the app, and only once per IST day. Vercel's own daily cron stays on as a
+# late catch-up in case these runs are delayed or skipped.
+
+on:
+  schedule:
+    # Every 30 minutes, so half-past times (6:30 AM IST) are honoured too.
+    - cron: "0,30 * * * *"
+  workflow_dispatch: {} # lets you trigger a run by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily job search
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://email-blaster-orpin.vercel.app' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET repository secret is not set — add it under"
+            echo "Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+          # -sS keeps it quiet but still prints real errors; the body is logged so
+          # a skip reason ("before-scheduled-hour", "already-sent-today") is visible.
+          body=$(curl -sS --max-time 120 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n%{http_code}" \
+            "$APP_URL/api/cron/daily-jobs")
+
+          code=$(printf '%s' "$body" | tail -n1)
+          printf '%s\n' "$body" | sed '$d'
+
+          # A non-2xx is a real failure worth a red run; a skip is a 200 and fine.
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "Request failed with HTTP $code"
+            exit 1
+          fi

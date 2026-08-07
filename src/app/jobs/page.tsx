@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Search, Loader2, Briefcase, ExternalLink, Trash2, Pencil, Check, X,
   Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck, SendHorizonal,
-  FileText, Upload, KeyRound, Eye, EyeOff, Plus, MapPin,
+  FileText, Upload, KeyRound, Eye, EyeOff, Plus, MapPin, BellRing,
 } from "lucide-react";
 import type { JobLead, LeadStatus } from "@/lib/jobLeads";
 
@@ -92,6 +92,13 @@ const EDIT_FIELDS: { key: keyof JobLead; label: string; wide?: boolean }[] = [
 ];
 
 export default function JobsPage() {
+  // (6, 30) -> "6:30 AM"   (17, 0) -> "5:00 PM"
+  function formatIstHour(h: number, m = 0): string {
+    const suffix = h < 12 ? "AM" : "PM";
+    const twelve = h % 12 === 0 ? 12 : h % 12;
+    return `${twelve}:${String(m).padStart(2, "0")} ${suffix}`;
+  }
+
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("India");
   const [leads, setLeads] = useState<JobLead[]>([]);
@@ -99,6 +106,10 @@ export default function JobsPage() {
   const [searching, setSearching] = useState(false);
   // Which preset button is mid-search, so only that one shows a spinner.
   const [scopeBusy, setScopeBusy] = useState<"" | "gujarat" | "india">("");
+  // Daily digest schedule. null until loaded, and stays null for non-admins —
+  // the endpoint 401s for them, which doubles as the admin check.
+  const [digest, setDigest] = useState<{ enabled: boolean; hourIst: number; minuteIst: number; lastSentDate: string } | null>(null);
+  const [digestSaving, setDigestSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | LeadStatus>("all");
@@ -149,6 +160,11 @@ export default function JobsPage() {
     fetch("/api/settings/ai-keys?reveal=1", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => { if (d.keys) { setAiKeys(d.keys); setKeysRevealed(true); } })
+      .catch(() => {});
+    // 401 for non-admins — digest stays null and the card never renders.
+    fetch("/api/settings/daily-digest", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.digest) setDigest(d.digest); })
       .catch(() => {});
   }, []);
 
@@ -238,6 +254,29 @@ export default function JobsPage() {
     } finally {
       setSearching(false);
       setScopeBusy("");
+    }
+  }
+
+  async function saveDigest(patch: { enabled?: boolean; hourIst?: number; minuteIst?: number }) {
+    setDigestSaving(true); setError("");
+    try {
+      const res = await fetch("/api/settings/daily-digest", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save the schedule");
+      setDigest(data.digest);
+      setMsg(
+        data.digest.enabled
+          ? `Daily digest set for ${formatIstHour(data.digest.hourIst, data.digest.minuteIst)} IST — you'll also get today's at that time.`
+          : "Daily digest turned off.",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDigestSaving(false);
     }
   }
 
@@ -372,6 +411,57 @@ export default function JobsPage() {
         {msg && <p className="text-xs text-teal-300 mt-2">{msg}</p>}
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
       </div>
+
+      {/* Daily digest schedule — admin only (endpoint 401s for everyone else) */}
+      {digest && (
+        <div className="rounded-2xl border border-violet-500/25 bg-violet-500/5 p-4 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              <BellRing size={15} className="text-violet-400 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-white">Daily Ahmedabad digest</p>
+                <p className="text-[11px] text-slate-500">
+                  {digest.enabled
+                    ? `Runs every day at ${formatIstHour(digest.hourIst, digest.minuteIst)} IST and emails you the new jobs. Changing the time applies from today.`
+                    : "Turned off — no automatic search or email."}
+                  {digest.lastSentDate ? ` Last sent ${digest.lastSentDate}.` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <select
+                className="input-field !w-36 !py-2"
+                value={digest.hourIst * 60 + digest.minuteIst}
+                disabled={digestSaving || !digest.enabled}
+                onChange={(e) => {
+                  const total = Number(e.target.value);
+                  saveDigest({ hourIst: Math.floor(total / 60), minuteIst: total % 60 });
+                }}
+              >
+                {Array.from({ length: 48 }, (_, i) => {
+                  const h = Math.floor(i / 2);
+                  const m = (i % 2) * 30;
+                  return <option key={i} value={h * 60 + m}>{formatIstHour(h, m)} IST</option>;
+                })}
+              </select>
+
+              <button
+                role="switch"
+                aria-checked={digest.enabled}
+                aria-label="Toggle daily digest"
+                disabled={digestSaving}
+                onClick={() => saveDigest({ enabled: !digest.enabled })}
+                className={`relative w-11 h-6 rounded-full transition-colors disabled:opacity-40 ${
+                  digest.enabled ? "bg-gradient-to-r from-violet-500 to-indigo-500" : "bg-slate-700"
+                }`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${digest.enabled ? "left-[22px]" : "left-0.5"}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Per-account AI keys — encrypted, synced, rotated on quota */}
       <div className="rounded-2xl border border-slate-700/50 bg-slate-800/30 mb-6 overflow-hidden">

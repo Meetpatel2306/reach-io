@@ -34,12 +34,25 @@ export interface StoredAiKeys {
   importedFromEnv?: boolean;
 }
 
+// When the daily Ahmedabad digest goes out. The hour is stored in IST because
+// that is the timezone the user picks it in — converting to UTC on write would
+// silently shift the chosen time whenever the offset logic changed.
+export interface DailyDigest {
+  enabled: boolean;
+  hourIst: number; // 0-23, IST
+  minuteIst: number; // 0 or 30 — the scheduler ticks every half hour
+  lastSentDate: string; // "YYYY-MM-DD" in IST — the once-per-day guard
+}
+
 interface UserSettings {
   smtp?: StoredSmtp | null;
   google?: StoredGoogle | null;
   aiKeys?: StoredAiKeys | null;
+  dailyDigest?: DailyDigest | null;
   updatedAt?: string;
 }
+
+const DEFAULT_DIGEST: DailyDigest = { enabled: true, hourIst: 9, minuteIst: 0, lastSentDate: "" };
 
 // ---- Redacted view for the client (no secrets) ----
 export interface SettingsView {
@@ -181,6 +194,65 @@ export async function getAiKeysForUse(email: string): Promise<{ gemini: string[]
     gemini: cur.gemini.map((e) => decryptSecret(e)).filter(Boolean),
     groq: cur.groq.map((e) => decryptSecret(e)).filter(Boolean),
   };
+}
+
+// ---- Daily digest schedule ----
+
+// IST is a fixed +5:30 offset with no daylight saving, so a plain shift is exact.
+// `minutes` is minutes-since-midnight, which makes schedule comparison a single
+// integer check instead of fiddly hour-then-minute logic.
+export function istNow(at: Date = new Date()): { date: string; hour: number; minutes: number } {
+  const ist = new Date(at.getTime() + 5.5 * 60 * 60 * 1000);
+  return {
+    date: ist.toISOString().slice(0, 10),
+    hour: ist.getUTCHours(),
+    minutes: ist.getUTCHours() * 60 + ist.getUTCMinutes(),
+  };
+}
+
+export function digestMinutes(d: DailyDigest): number {
+  return d.hourIst * 60 + d.minuteIst;
+}
+
+export async function getDailyDigest(email: string): Promise<DailyDigest> {
+  const s = await load(email);
+  return { ...DEFAULT_DIGEST, ...(s.dailyDigest || {}) };
+}
+
+export async function saveDailyDigest(
+  email: string,
+  patch: { enabled?: boolean; hourIst?: number; minuteIst?: number },
+): Promise<DailyDigest> {
+  const s = await load(email);
+  const cur = { ...DEFAULT_DIGEST, ...(s.dailyDigest || {}) };
+  const before = digestMinutes(cur);
+
+  if (typeof patch.enabled === "boolean") cur.enabled = patch.enabled;
+  if (typeof patch.hourIst === "number" && Number.isInteger(patch.hourIst)) {
+    cur.hourIst = Math.min(23, Math.max(0, patch.hourIst));
+  }
+  if (typeof patch.minuteIst === "number" && Number.isInteger(patch.minuteIst)) {
+    cur.minuteIst = patch.minuteIst >= 30 ? 30 : 0;
+  }
+
+  // Moving the time is an instruction to use the NEW time starting now — so
+  // clear the once-per-day guard. Without this, changing 6:30 AM to 5:00 PM
+  // after the morning send would do nothing until tomorrow, which reads as the
+  // setting being ignored. Re-enabling after a pause resets it for the same
+  // reason.
+  if (digestMinutes(cur) !== before || patch.enabled === true) cur.lastSentDate = "";
+
+  s.dailyDigest = cur;
+  await save(email, s);
+  return cur;
+}
+
+// Stamped only after a digest actually goes out, so a failed send is retried on
+// the next tick rather than being silently marked done for the day.
+export async function markDigestSent(email: string, date: string): Promise<void> {
+  const s = await load(email);
+  s.dailyDigest = { ...DEFAULT_DIGEST, ...(s.dailyDigest || {}), lastSentDate: date };
+  await save(email, s);
 }
 
 // Server-only: the Google account email + decrypted refresh token, for the send
