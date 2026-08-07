@@ -105,11 +105,29 @@ ALSO EXCLUDE: pure MLOps/DevOps, pure Data Science/statistics, BI/PowerBI/Tablea
 analyst, QA/testing, frontend-only, and PHP/.NET/Java-only roles. Skip staffing
 agencies that do not name the actual employer.
 
-SEARCH BREADTH — do not stop at one job board. Cover LinkedIn, Naukri, Indeed,
-Cutshort, Wellfound, Instahyre, Hirist, foundit, Glassdoor and Internshala, AND
-search applicant-tracking boards directly (Greenhouse, Lever, Ashby, Workable,
-SmartRecruiters) where postings appear before the aggregators scrape them and
-closed roles are actually removed. Also check company career pages directly.
+SEARCH BREADTH — never answer from a single job board.
+
+MANDATORY — search all four of these every time, as separate queries:
+  1. LinkedIn Jobs
+  2. Naukri.com
+  3. Indeed India
+  4. Wellfound (AngelList)
+
+ALSO SEARCH: Cutshort · Instahyre · Hirist · foundit (Monster) · Glassdoor ·
+Internshala · SimplyHired · Jooble · Weekday · Uplers · Shine · TimesJobs.
+
+AND search applicant-tracking boards directly — Greenhouse (boards.greenhouse.io),
+Lever (jobs.lever.co), Ashby (jobs.ashbyhq.com), Workable, SmartRecruiters,
+Recruitee, Zoho Recruit, Keka, Darwinbox. This is where companies actually post:
+roles appear here before any aggregator scrapes them, and closed roles are really
+removed instead of lingering — aggregators never delete anything, which is the
+single biggest source of dead listings.
+
+Finally, open the career page of any company you find, since employers routinely
+list roles there that reach no job board at all.
+
+If one of the mandatory four returns nothing or blocks you, say so explicitly in
+the "source" field of the rows you did find rather than quietly skipping it.
 
 ORDER — newest first, most recently posted at the top.
 
