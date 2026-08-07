@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Send, Mail, BellRing, FileText, History, BookOpen, Crown, LifeBuoy, Sparkles, Briefcase } from "lucide-react";
 
 // Global compose mode — "ai" (dynamic) or "template" (static). Persisted in
@@ -38,8 +38,12 @@ const LINKS = [
 
 export function AppNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
+  // Three states, not two. "unknown" is the difference between "you are signed
+  // out" and "we could not ask" — collapsing them is what silently removed the
+  // whole navigation whenever /api/auth/me hiccuped.
+  const [auth, setAuth] = useState<"unknown" | "in" | "out">("unknown");
   const [mode, setMode] = useState<"ai" | "template">("ai");
 
   useEffect(() => {
@@ -52,21 +56,34 @@ export function AppNav() {
     return () => window.removeEventListener(COMPOSE_MODE_EVENT, onMode);
   }, []);
 
+  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+
   useEffect(() => {
+    if (isPublic) return;
     let cancelled = false;
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
-        setSignedIn(!!d.user);
-        setIsAdmin(d.user?.role === "admin");
+        if (d.user) {
+          setAuth("in");
+          setIsAdmin(d.user.role === "admin");
+          return;
+        }
+        setAuth("out");
+        // We are on a protected page with no valid session — a ghost session.
+        // /api/auth/me has just cleared the dead cookie, so bounce to login and
+        // come back here afterwards instead of sitting on a half-dead page.
+        router.replace(`/login?from=${encodeURIComponent(pathname)}`);
       })
+      // Network/500 failure is NOT proof of being signed out. Stay in "unknown"
+      // so a transient blip cannot strip the navigation off a working session.
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [pathname]);
+  }, [pathname, isPublic, router]);
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return null;
-  if (!signedIn) return null;
+  if (isPublic) return null;
+  if (auth === "out") return null;
 
   return (
     <>
