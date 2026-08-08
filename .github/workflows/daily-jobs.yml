@@ -1,13 +1,20 @@
 name: Daily job digest
 
-# Ticks hourly and lets the app decide whether to act.
+# Ticks every 30 minutes and lets the app decide whether to act.
 #
-# Vercel Cron is the natural home for this, but Hobby accounts are capped at one
-# run per day — a single fixed tick, which would make the send time in the UI a
-# lie. GitHub Actions allows hourly schedules for free, so it pings the endpoint
-# every hour and /api/cron/daily-jobs decides: it sends only at the hour chosen
-# in the app, and only once per IST day. Vercel's own daily cron stays on as a
-# late catch-up in case these runs are delayed or skipped.
+# Vercel Cron would be the natural home, but Hobby accounts are capped at one run
+# per day — a single fixed tick, which would make the send time chosen in the app
+# a lie. GitHub Actions allows sub-daily schedules for free, so it pings the
+# endpoint and /api/cron/daily-jobs decides: it sends only at the configured
+# time, and only once per IST day. Vercel's own daily cron stays on as a late
+# catch-up in case these runs are delayed or skipped.
+#
+# This job never fails the run. It is a heartbeat that fires ~48 times a day, so
+# a red run means ~48 emails a day — which is exactly what happened when the
+# CRON_SECRET secret was missing and the step exited 1. Alerting by failing a
+# high-frequency scheduled job is the wrong mechanism: the real signal is the
+# digest email arriving (or not), and the outcome of every tick is written to the
+# job summary below, visible in the Actions tab without touching your inbox.
 
 on:
   schedule:
@@ -24,24 +31,43 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           APP_URL: ${{ vars.APP_URL || 'https://email-blaster-orpin.vercel.app' }}
         run: |
+          summary() { echo "$1" >> "$GITHUB_STEP_SUMMARY"; echo "$1"; }
+
           if [ -z "$CRON_SECRET" ]; then
-            echo "CRON_SECRET repository secret is not set — add it under"
-            echo "Settings > Secrets and variables > Actions."
-            exit 1
+            summary "### Not configured"
+            summary ""
+            summary "The \`CRON_SECRET\` repository secret is not set, so this tick did nothing."
+            summary "Add it under **Settings → Secrets and variables → Actions**, using the same"
+            summary "value as the \`CRON_SECRET\` environment variable on Vercel."
+            exit 0
           fi
 
-          # -sS keeps it quiet but still prints real errors; the body is logged so
-          # a skip reason ("before-scheduled-hour", "already-sent-today") is visible.
+          # --fail-with-body is not used: a non-2xx body carries the reason, and
+          # we want to report it rather than let curl swallow it.
           body=$(curl -sS --max-time 120 \
             -H "Authorization: Bearer $CRON_SECRET" \
-            -w "\n%{http_code}" \
-            "$APP_URL/api/cron/daily-jobs")
+            -w $'\n%{http_code}' \
+            "$APP_URL/api/cron/daily-jobs") || {
+              summary "### Request failed"
+              summary ""
+              summary "Could not reach \`$APP_URL\`. Transient network or DNS problem, most likely."
+              exit 0
+            }
 
           code=$(printf '%s' "$body" | tail -n1)
-          printf '%s\n' "$body" | sed '$d'
+          payload=$(printf '%s' "$body" | sed '$d')
 
-          # A non-2xx is a real failure worth a red run; a skip is a 200 and fine.
-          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
-            echo "Request failed with HTTP $code"
-            exit 1
+          if [ "$code" -ge 200 ] && [ "$code" -lt 300 ]; then
+            summary "### OK ($code)"
+          else
+            summary "### Unexpected response ($code)"
           fi
+          summary ""
+          summary '```json'
+          summary "$payload"
+          summary '```'
+
+          # Always green. See the note at the top of this file — a scheduled job
+          # that runs 48 times a day must not use run failure as its alerting
+          # channel.
+          exit 0
