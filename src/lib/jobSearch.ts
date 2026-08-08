@@ -215,6 +215,14 @@ async function groqJsonify(rawText: string, apiKeys: string[]): Promise<string> 
   throw new Error(lastErr || "No Groq key");
 }
 
+// Phrases a model uses when it declines to search, rather than search and fail.
+const REFUSAL_RE =
+  /\b(?:i(?:'m| am)? ?(?:unable|not able) to (?:perform|do|run|carry out|access|browse|search)|i (?:can(?:no|')t|cannot) (?:search|browse|access|retrieve|perform)|do(?:n'| no)t have (?:access|the ability|browsing)|no (?:access to|ability to) (?:the )?(?:internet|web))/i;
+
+// Rows a model invents to demonstrate the schema instead of returning real data.
+const PLACEHOLDER_RE =
+  /\b(?:example\s*(?:corp|company|inc|ltd)|acme|your\s*company|company\s*name|sample\s*(?:corp|company)|xyz\s*(?:corp|company|ltd))\b|example\.(?:com|org|net)/i;
+
 async function groqCompoundSearch(prompt: string, apiKeys: string[]): Promise<string> {
   let lastErr = "";
   let proseAnswer = "";
@@ -242,7 +250,18 @@ async function groqCompoundSearch(prompt: string, apiKeys: string[]): Promise<st
       }
       const data = await res.json();
       const text: string = data?.choices?.[0]?.message?.content || "";
-      // A refusal ("I can't search the web") has no URLs — retry, never accept it.
+
+      // Refusals must be detected by what they SAY, not by whether a URL is
+      // present. compound-mini declines with "I'm unable to perform a live web
+      // search" and then helpfully demonstrates the schema with Example Corp and
+      // a placeholder link — which satisfies a naive "has a URL and a brace"
+      // test, so the refusal was being returned as though it were results and
+      // surfaced to the user as a truthful-looking "Found 0".
+      if (REFUSAL_RE.test(text)) {
+        lastErr = `Groq (${model}) refused to run a web search`;
+        continue;
+      }
+
       const searched = /https?:\/\//i.test(text);
       if (searched && /[\[{]/.test(text)) return text;
       if (searched) proseAnswer = text; // real searched content, wrong shape
@@ -251,6 +270,13 @@ async function groqCompoundSearch(prompt: string, apiKeys: string[]): Promise<st
   }
   // Salvage: the search worked but came back as prose — restructure it.
   if (proseAnswer) return groqJsonify(proseAnswer, apiKeys);
+  if (lastErr.includes("refused")) {
+    throw new Error(
+      `${lastErr}. Groq's search model declines fairly often, so it is a weak backup. ` +
+        "Add a second Gemini key from a different Google account in the AI keys section — " +
+        "each key carries its own quota and the app rotates between them automatically.",
+    );
+  }
   throw new Error(lastErr || "No Groq API key on your account");
 }
 
@@ -315,6 +341,10 @@ export function parseJobsText(text: string): FoundJob[] {
     // apply link is missing and we have the career page, use that instead of
     // throwing the whole row away.
     if (!job.company) continue;
+    // "Example Corp" / example.com rows are the model demonstrating the schema,
+    // not a posting it found. Letting one through would put a fake employer in
+    // the leads table and, worse, make a refusal look like a successful search.
+    if (PLACEHOLDER_RE.test(job.company) || PLACEHOLDER_RE.test(job.applyLink)) continue;
     if (!/^https?:\/\//i.test(job.applyLink)) {
       if (/^https?:\/\//i.test(job.careerPage)) job.applyLink = job.careerPage;
       else continue;
