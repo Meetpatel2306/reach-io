@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Search, Loader2, Briefcase, ExternalLink, Trash2, Pencil, Check, X,
   Globe, Mail, Phone, ChevronDown, ChevronUp, Radar, Sparkles, Copy, ClipboardCheck, SendHorizonal,
@@ -128,6 +128,27 @@ export default function JobsPage() {
   const [keysOpen, setKeysOpen] = useState(false);
   const [keyInput, setKeyInput] = useState<{ gemini: string; groq: string }>({ gemini: "", groq: "" });
   const [keyMsg, setKeyMsg] = useState("");
+  // Errors were being shown through keyMsg, which renders teal — a rejected key
+  // read as a success. They get their own red line now.
+  const [keyErr, setKeyErr] = useState("");
+  const [keyBusy, setKeyBusy] = useState<"" | "gemini" | "groq">("");
+  const saveTimers = useRef<Partial<Record<"gemini" | "groq", ReturnType<typeof setTimeout>>>>({});
+
+  // A pasted key is saved on its own once it looks complete — no Add click.
+  function looksComplete(provider: "gemini" | "groq", key: string): boolean {
+    const k = key.trim();
+    return provider === "gemini" ? /^AIza[\w-]{16,}$/.test(k) : /^gsk_[\w]{16,}$/.test(k);
+  }
+
+  function onKeyInput(provider: "gemini" | "groq", value: string) {
+    setKeyInput((p) => ({ ...p, [provider]: value }));
+    setKeyErr("");
+    clearTimeout(saveTimers.current[provider]);
+    // Debounced so it fires once when typing/pasting settles, not per keystroke.
+    if (looksComplete(provider, value)) {
+      saveTimers.current[provider] = setTimeout(() => addKey(provider), 800);
+    }
+  }
 
   async function copyLead(l: JobLead) {
     if (await copyText(formatLead(l))) {
@@ -168,10 +189,13 @@ export default function JobsPage() {
       .catch(() => {});
   }, []);
 
-  async function refreshKeys(reveal: boolean) {
+  // Returns the keys so callers can confirm a save actually landed.
+  async function refreshKeys(reveal: boolean): Promise<{ gemini: string[]; groq: string[] } | null> {
     const res = await fetch(`/api/settings/ai-keys${reveal ? "?reveal=1" : ""}`, { cache: "no-store" });
+    if (!res.headers.get("content-type")?.includes("application/json")) return null;
     const data = await res.json();
-    if (data.keys) { setAiKeys(data.keys); setKeysRevealed(reveal); }
+    if (data.keys) { setAiKeys(data.keys); setKeysRevealed(reveal); return data.keys; }
+    return null;
   }
 
   async function toggleRevealKeys() {
@@ -180,18 +204,45 @@ export default function JobsPage() {
 
   async function addKey(provider: "gemini" | "groq") {
     const key = keyInput[provider].trim();
-    if (!key) return;
-    setKeyMsg("");
-    const res = await fetch("/api/settings/ai-keys", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, key }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setKeyMsg(data.error || "Couldn't save the key"); return; }
-    await refreshKeys(true);
-    setKeyInput((p) => ({ ...p, [provider]: "" }));
-    setKeyMsg("Key saved to your account (encrypted) — works on all your devices.");
+    if (!key || keyBusy) return;
+    clearTimeout(saveTimers.current[provider]);
+    const before = aiKeys[provider].length;
+    setKeyMsg(""); setKeyErr(""); setKeyBusy(provider);
+    try {
+      const res = await fetch("/api/settings/ai-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, key }),
+      });
+
+      // An expired session is redirected to the HTML login page, and parsing
+      // that as JSON throws — which is why a failed save used to look like
+      // nothing happening at all. Check the type before trusting the body.
+      if (!res.headers.get("content-type")?.includes("application/json")) {
+        throw new Error(
+          res.status === 401 || res.redirected
+            ? "Your session expired — reload the page, sign in, and try again."
+            : `Server returned ${res.status} instead of a result.`,
+        );
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't save the key");
+
+      // Confirm it actually persisted rather than trusting the response — a key
+      // that silently fails to store is the whole bug being fixed here.
+      const after = await refreshKeys(true);
+      if (!after || after[provider].length <= before) {
+        throw new Error("The key was accepted but did not save. Reload and try again.");
+      }
+
+      setKeyInput((p) => ({ ...p, [provider]: "" }));
+      setKeyMsg(`${provider === "gemini" ? "Gemini" : "Groq"} key saved to your account (encrypted) — it works on all your devices.`);
+    } catch (e) {
+      setKeyErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setKeyBusy("");
+    }
   }
 
   async function deleteKey(provider: "gemini" | "groq", index: number) {
@@ -496,6 +547,7 @@ export default function JobsPage() {
               )}
             </div>
             {keyMsg && <p className="text-xs text-teal-300">{keyMsg}</p>}
+            {keyErr && <p className="text-xs text-red-400">{keyErr}</p>}
             {(["gemini", "groq"] as const).map((provider) => (
               <div key={provider}>
                 <p className="text-xs font-semibold text-slate-300 mb-1.5">
@@ -522,15 +574,18 @@ export default function JobsPage() {
                       type="password"
                       placeholder={provider === "gemini" ? "AIza..." : "gsk_..."}
                       value={keyInput[provider]}
-                      onChange={(e) => setKeyInput((p) => ({ ...p, [provider]: e.target.value }))}
+                      onChange={(e) => onKeyInput(provider, e.target.value)}
+                      onBlur={() => { if (looksComplete(provider, keyInput[provider])) addKey(provider); }}
                       onKeyDown={(e) => { if (e.key === "Enter") addKey(provider); }}
                     />
                     <button
                       onClick={() => addKey(provider)}
-                      disabled={!keyInput[provider].trim()}
+                      disabled={!keyInput[provider].trim() || keyBusy === provider}
                       className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-teal-500/30 bg-teal-500/10 text-teal-200 text-xs hover:bg-teal-500/20 transition disabled:opacity-40"
                     >
-                      <Plus size={12} /> Add
+                      {keyBusy === provider
+                        ? <><Loader2 size={12} className="animate-spin" /> Saving</>
+                        : <><Plus size={12} /> Add</>}
                     </button>
                   </div>
                 </div>
