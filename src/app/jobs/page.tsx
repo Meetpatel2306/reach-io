@@ -135,9 +135,12 @@ export default function JobsPage() {
   const saveTimers = useRef<Partial<Record<"gemini" | "groq", ReturnType<typeof setTimeout>>>>({});
 
   // A pasted key is saved on its own once it looks complete — no Add click.
-  function looksComplete(provider: "gemini" | "groq", key: string): boolean {
+  // Deliberately shape-agnostic: providers change their key formats, and the
+  // server verifies the key by actually calling the API, so guessing a prefix
+  // here would only stop valid new-format keys from ever autosaving.
+  function looksComplete(_provider: "gemini" | "groq", key: string): boolean {
     const k = key.trim();
-    return provider === "gemini" ? /^AIza[\w-]{16,}$/.test(k) : /^gsk_[\w]{16,}$/.test(k);
+    return k.length >= 20 && !/\s/.test(k);
   }
 
   function onKeyInput(provider: "gemini" | "groq", value: string) {
@@ -572,7 +575,7 @@ export default function JobsPage() {
                     <input
                       className="input-field !py-1.5 text-xs"
                       type="password"
-                      placeholder={provider === "gemini" ? "AIza..." : "gsk_..."}
+                      placeholder={provider === "gemini" ? "Paste your Gemini API key" : "Paste your Groq API key"}
                       value={keyInput[provider]}
                       onChange={(e) => onKeyInput(provider, e.target.value)}
                       onBlur={() => { if (looksComplete(provider, keyInput[provider])) addKey(provider); }}
